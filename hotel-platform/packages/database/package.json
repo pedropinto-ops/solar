@@ -2,11 +2,17 @@
   "name": "@hotel/database",
   "version": "0.1.0",
   "private": true,
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./src/index.ts",
-    "./client": "./src/client.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "default": "./dist/client.js"
+    }
   },
   "scripts": {
     "generate": "prisma generate",
@@ -17,7 +23,7 @@
     "studio": "prisma studio",
     "lint": "echo 'no lint configured'",
     "typecheck": "tsc --noEmit",
-    "build": "echo 'no build needed'"
+    "build": "tsc"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
