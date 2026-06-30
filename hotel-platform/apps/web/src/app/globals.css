@@ -1,0 +1,47 @@
+@import url('https://fonts.googleapis.com/css2?family=Source+Serif+Pro:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Reset essencial + base */
+html, body {
+  background: theme('colors.sand.50');
+  color: theme('colors.ink.950');
+  font-family: theme('fontFamily.sans');
+  /* iOS: evita zoom em foco de input */
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Inputs com tamanho mínimo de 16px no iOS (evita auto-zoom) */
+input, select, textarea {
+  font-size: 16px;
+}
+
+/* Esconde scrollbar visualmente mas mantém scroll */
+.hide-scroll::-webkit-scrollbar { display: none; }
+.hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Números tabulares (alinhamento em colunas financeiras) */
+.nums { font-variant-numeric: tabular-nums; }
+
+/* Tipografia utilitária */
+.font-serif-display {
+  font-family: theme('fontFamily.serif');
+  letter-spacing: -0.01em;
+}
+
+/* Focus visível para acessibilidade (teclado) */
+*:focus-visible {
+  outline: 2px solid theme('colors.teal.500');
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Safe area insets (notch + barra inferior em iPhones) */
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.safe-area-top {
+  padding-top: env(safe-area-inset-top);
+}

@@ -1,0 +1,1033 @@
+// =====================================================================
+//  HOTEL PLATFORM — SCHEMA PRISMA (MVP)
+//  PostgreSQL 16+
+//
+//  Escopo do MVP:
+//    1. Link público de reserva
+//    2. Pagamento via Pix e Cartão (Asaas)
+//    3. Dados de hóspedes (LGPD + FNRH)
+//    4. Agenda de hospedagens
+//    5. Check-in / Check-out
+//    6. Controle de ocupação dos quartos
+//    7. Controle de limpeza (housekeeping)
+//    8. Consumos com controle de estoque (frigobar/restaurante)
+//    9. NFS-e via Focus NFe
+//   10. Políticas de cobrança: Sinal+Saldo e Pós-pago Corporativo
+//
+//  Convenções:
+//    - Todas as tabelas com isolamento por `propertyId` (multi-tenant)
+//    - IDs em CUID (legíveis em URL, ordenáveis)
+//    - Soft delete via `deletedAt` em entidades com dados pessoais (LGPD)
+//    - Auditoria de mutações importantes em `audit_logs`
+//    - Datas de "calendário" (check-in/out) em @db.Date; demais em timestamptz
+// =====================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+
+// =====================================================================
+//  TENANT & USUÁRIOS
+// =====================================================================
+
+/// Hotel ou pousada. Cada Property é um tenant isolado.
+model Property {
+  id          String   @id @default(cuid())
+  name        String                              // "Pousada Vista Mar"
+  legalName   String?                             // razão social
+  cnpj        String?  @unique
+  cadastur    String?                             // registro Embratur
+
+  // Endereço da propriedade (não confundir com endereço de hóspedes)
+  addressStreet       String?
+  addressNumber       String?
+  addressComplement   String?
+  addressNeighborhood String?
+  addressCity         String?
+  addressState        String?
+  addressZip          String?
+  addressCountry      String  @default("BR")
+
+  // Contato
+  phone       String?
+  email       String?
+  website     String?
+
+  // Configuração operacional
+  timezone    String   @default("America/Sao_Paulo")
+  currency    String   @default("BRL")
+  checkInTime String   @default("14:00")          // hora padrão check-in
+  checkOutTime String  @default("12:00")          // hora padrão check-out
+
+  // Identidade visual (para página pública de reserva)
+  logoUrl       String?
+  primaryColor  String?
+  bookingSlug   String  @unique                   // URL: /reservar/{slug}
+
+  // ---- CONFIGURAÇÃO FISCAL (NFS-e) ----
+  fiscalEnabled        Boolean  @default(false)
+  fiscalProvider       String?                    // "focus_nfe"
+  fiscalApiToken       String?                    // criptografar antes de salvar
+  fiscalServiceCode    String?                    // código de serviço municipal (ex: "0903")
+  fiscalCnae           String?                    // CNAE principal (ex: "5510801")
+  fiscalIssRate        Decimal? @db.Decimal(5, 2) // alíquota ISS (%)
+  fiscalIssWithheld    Boolean  @default(false)   // ISS retido?
+  fiscalCertExpiresAt  DateTime?                  // expiração do certificado A1
+
+  // ---- POLÍTICAS DE COBRANÇA (configuráveis) ----
+  // JSON com regras: ex { "deposit": { "enabled": true, "percent": 30, "dueOnBooking": true } }
+  paymentPolicies      Json?
+  cancellationPolicy   Json?                      // ver README
+
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users         User[]
+  roomTypes     RoomType[]
+  rooms         Room[]
+  guests        Guest[]
+  reservations  Reservation[]
+  payments      Payment[]
+  cleaningTasks CleaningTask[]
+  auditLogs     AuditLog[]
+  companies     Company[]
+  products      Product[]
+  stockLocations StockLocation[]
+  chargeItems   ChargeItem[]
+  invoices      Invoice[]
+  fiscalDocuments FiscalDocument[]
+
+  @@map("properties")
+}
+
+/// Usuários do sistema (staff do hotel). NÃO confundir com Guest.
+model User {
+  id            String   @id @default(cuid())
+  propertyId    String
+
+  email         String   @unique
+  passwordHash  String
+  name          String
+  phone         String?
+
+  role          UserRole
+  active        Boolean  @default(true)
+
+  lastLoginAt   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  property      Property @relation(fields: [propertyId], references: [id])
+
+  // Quem fez o quê
+  cleaningsAssigned   CleaningTask[] @relation("CleaningAssignee")
+  cleaningsInspected  CleaningTask[] @relation("CleaningInspector")
+  auditLogs           AuditLog[]
+
+  @@index([propertyId])
+  @@map("users")
+}
+
+enum UserRole {
+  ADMIN                   // dono / gerente geral
+  MANAGER                 // gerência
+  RECEPTION               // recepcionistas
+  HOUSEKEEPING_SUPERVISOR // governanta
+  HOUSEKEEPER             // camareira
+  READONLY                // contabilidade, auditoria
+}
+
+
+// =====================================================================
+//  QUARTOS
+// =====================================================================
+
+/// Categoria de quarto (não a unidade física).
+/// Exemplo: "Standard Casal", "Luxo Vista Mar", "Suíte Master"
+model RoomType {
+  id            String   @id @default(cuid())
+  propertyId    String
+
+  name          String                            // "Luxo Vista Mar"
+  description   String?
+  basePrice     Decimal  @db.Decimal(10, 2)        // diária base em BRL
+  maxOccupancy  Int      @default(2)              // total de pessoas
+  maxAdults     Int      @default(2)
+  maxChildren   Int      @default(0)
+  bedConfig     String?                            // "1 cama king + 1 sofá-cama"
+  sizeSqm       Float?                             // m² para a página pública
+  amenities     String[]                           // ["wifi","ar","tv","cofre"]
+  photos        String[]                           // URLs (R2)
+
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  property      Property @relation(fields: [propertyId], references: [id])
+  rooms         Room[]
+  reservations  Reservation[]
+
+  @@index([propertyId])
+  @@map("room_types")
+}
+
+/// Unidade física do quarto.
+model Room {
+  id           String     @id @default(cuid())
+  propertyId   String
+  roomTypeId   String
+
+  number       String                              // "101", "Bangalô 3"
+  floor        Int?
+  status       RoomStatus @default(AVAILABLE)
+  notes        String?                             // "ar quebrado", "vista parcial"
+
+  active       Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  property        Property        @relation(fields: [propertyId], references: [id])
+  roomType        RoomType        @relation(fields: [roomTypeId], references: [id])
+  reservations    Reservation[]
+  cleaningTasks   CleaningTask[]
+  statusLogs      RoomStatusLog[]
+
+  @@unique([propertyId, number])
+  @@index([propertyId, status])
+  @@index([roomTypeId])
+  @@map("rooms")
+}
+
+/// Estado atual do quarto.
+/// Máquina de estados:
+///   AVAILABLE → OCCUPIED        (check-in)
+///   OCCUPIED  → DIRTY           (check-out)
+///   DIRTY     → CLEANING        (camareira inicia)
+///   CLEANING  → INSPECTION      (camareira finaliza)
+///   INSPECTION → AVAILABLE      (supervisor aprova)
+///   INSPECTION → CLEANING       (supervisor reprova)
+///   *         → MAINTENANCE     (defeito reportado)
+///   *         → BLOCKED         (decisão admin)
+enum RoomStatus {
+  AVAILABLE        // limpo, pronto para venda
+  OCCUPIED         // hóspede in-house
+  DIRTY            // aguardando limpeza
+  CLEANING         // em limpeza
+  INSPECTION       // aguardando supervisor
+  MAINTENANCE      // em manutenção
+  BLOCKED          // bloqueio administrativo (reforma, evento privado)
+  OUT_OF_ORDER     // fora de operação prolongada
+}
+
+/// Histórico de mudanças de status do quarto (auditoria operacional).
+model RoomStatusLog {
+  id              String      @id @default(cuid())
+  roomId          String
+  previousStatus  RoomStatus?
+  newStatus       RoomStatus
+  reason          String?
+  changedById     String?                          // userId (não FK por simplicidade)
+  createdAt       DateTime    @default(now())
+
+  room            Room @relation(fields: [roomId], references: [id])
+
+  @@index([roomId, createdAt(sort: Desc)])
+  @@map("room_status_logs")
+}
+
+
+// =====================================================================
+//  HÓSPEDES
+// =====================================================================
+
+/// Pessoa física que se hospeda. Inclui campos obrigatórios da FNRH
+/// (Ficha Nacional de Registro de Hóspedes — Embratur).
+model Guest {
+  id              String   @id @default(cuid())
+  propertyId      String
+
+  // ---- IDENTIFICAÇÃO ----
+  fullName            String
+  documentType        DocumentType
+  documentNumber      String                        // CPF, passaporte, RG (sem máscara)
+  documentIssuer      String?                       // "SSP/BA"
+  documentIssuedAt    DateTime? @db.Date
+  birthDate           DateTime? @db.Date
+  gender              Gender?
+  nationality         String    @default("BR")      // ISO 3166-1 alpha-2
+  occupation          String?                       // exigido FNRH
+
+  // ---- CONTATO ----
+  email               String?
+  phone               String?                       // E.164 sem máscara
+  whatsapp            String?                       // pode ser igual ao phone
+
+  // ---- ENDEREÇO DE RESIDÊNCIA (obrigatório FNRH) ----
+  addressStreet       String?
+  addressNumber       String?
+  addressComplement   String?
+  addressNeighborhood String?
+  addressCity         String?
+  addressState        String?                       // UF (BR) ou estado/província
+  addressZip          String?
+  addressCountry      String   @default("BR")
+
+  // ---- DADOS DE VIAGEM (FNRH) ----
+  travelOrigin        String?                       // cidade de origem
+  travelDestination   String?                       // próxima cidade após estadia
+  travelPurpose       TravelPurpose?
+  transportMeans      TransportMeans?
+
+  // ---- METADADOS DE NEGÓCIO ----
+  preferences         Json?                         // { andar: "alto", alergias: ["leite"] }
+  tags                String[]                      // ["VIP","Recorrente","Corporativo"]
+  internalNotes       String?                       // só staff vê
+
+  // ---- VÍNCULO B2B (corporativo) ----
+  companyId           String?                       // empresa do convênio (se for hóspede corporativo)
+
+  // ---- LGPD ----
+  consentMarketing    Boolean   @default(false)
+  consentDataAt       DateTime?                     // quando consentiu uso dos dados
+  anonymizedAt        DateTime?                     // direito ao esquecimento
+
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  deletedAt           DateTime?                     // soft delete
+
+  property            Property            @relation(fields: [propertyId], references: [id])
+  company             Company?            @relation(fields: [companyId], references: [id])
+  documents           GuestDocument[]
+  reservations        ReservationGuest[]
+  primaryReservations Reservation[]       @relation("PrimaryGuest")
+
+  // Um mesmo CPF pode aparecer em propriedades diferentes (são hotéis diferentes).
+  @@unique([propertyId, documentNumber])
+  @@index([propertyId, fullName])
+  @@index([propertyId, email])
+  @@index([propertyId, phone])
+  @@index([companyId])
+  @@index([deletedAt])
+  @@map("guests")
+}
+
+enum DocumentType {
+  CPF
+  RG
+  CNH
+  PASSPORT
+  OTHER
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  NOT_INFORMED
+}
+
+enum TravelPurpose {
+  LEISURE         // turismo / lazer
+  BUSINESS        // negócios
+  EVENT           // evento / congresso
+  HEALTH          // saúde
+  EDUCATION       // estudo
+  FAMILY          // visita familiar
+  OTHER
+}
+
+enum TransportMeans {
+  OWN_CAR
+  RENTED_CAR
+  BUS
+  PLANE
+  TRAIN
+  BOAT
+  MOTORCYCLE
+  OTHER
+}
+
+/// Fotos / scans de documentos (frente/verso). Armazenadas em R2.
+model GuestDocument {
+  id          String   @id @default(cuid())
+  guestId     String
+  type        String                                // "rg_front","rg_back","passport","signature"
+  url         String                                // URL no Cloudflare R2
+  mimeType    String?
+  sizeBytes   Int?
+  createdAt   DateTime @default(now())
+
+  guest       Guest @relation(fields: [guestId], references: [id], onDelete: Cascade)
+
+  @@index([guestId])
+  @@map("guest_documents")
+}
+
+
+// =====================================================================
+//  RESERVAS
+// =====================================================================
+
+/// Uma reserva = intenção de hospedagem entre duas datas, em UM quarto.
+/// Reserva de grupo (vários quartos) fica para versão futura.
+model Reservation {
+  id                  String   @id @default(cuid())
+  propertyId          String
+  code                String                        // "RES-2026-00123" código humano
+
+  // ---- QUEM ----
+  primaryGuestId      String?                       // pode ser null antes do pré-cadastro
+  adults              Int      @default(1)
+  children            Int      @default(0)
+
+  // ---- ONDE ----
+  roomTypeId          String                        // categoria sempre definida
+  roomId              String?                       // unidade física (atribuída no check-in ou antes)
+
+  // ---- QUANDO ----
+  checkInDate         DateTime @db.Date
+  checkOutDate        DateTime @db.Date
+  nights              Int                            // computado: checkOut - checkIn
+
+  // ---- STATUS ----
+  status              ReservationStatus @default(PENDING)
+
+  // ---- DINHEIRO ----
+  totalAmount         Decimal  @db.Decimal(10, 2)   // total da hospedagem (diárias)
+  paidAmount          Decimal  @db.Decimal(10, 2) @default(0)
+  dailyRate           Decimal  @db.Decimal(10, 2)   // tarifa aplicada (snapshot)
+
+  // ---- POLÍTICA DE COBRANÇA ----
+  billingMode         BillingMode @default(DEPOSIT_BALANCE)
+  depositPercent      Int?     @default(30)         // se DEPOSIT_BALANCE
+  companyId           String?                        // se POSTPAID_CORPORATE
+  invoiceId           String?                        // fatura corporativa onde esta reserva está consolidada
+  corporatePO         String?                        // número de PO/empenho da empresa
+
+  // ---- ORIGEM ----
+  source              ReservationSource @default(DIRECT)
+  sourceDetails       String?                       // UTM, ID na OTA
+
+  // ---- DATAS DE PROCESSO ----
+  bookedAt            DateTime  @default(now())     // criação
+  confirmedAt         DateTime?                     // quando virou CONFIRMED
+  checkedInAt         DateTime?                     // check-in real (timestamp)
+  checkedOutAt        DateTime?                     // check-out real (timestamp)
+  cancelledAt         DateTime?
+  cancellationReason  String?
+
+  // ---- NOTAS ----
+  guestNotes          String?                       // pedido do hóspede ("cama extra")
+  internalNotes       String?                       // só staff
+
+  // ---- HOLD (para link público de reserva) ----
+  holdExpiresAt       DateTime?                     // bloqueia disponibilidade por 10 min enquanto paga
+
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  property            Property         @relation(fields: [propertyId], references: [id])
+  primaryGuest        Guest?           @relation("PrimaryGuest", fields: [primaryGuestId], references: [id])
+  roomType            RoomType         @relation(fields: [roomTypeId], references: [id])
+  room                Room?            @relation(fields: [roomId], references: [id])
+  company             Company?         @relation(fields: [companyId], references: [id])
+  invoice             Invoice?         @relation(fields: [invoiceId], references: [id])
+  guests              ReservationGuest[]
+  payments            Payment[]
+  chargeItems         ChargeItem[]
+  fiscalDocuments     FiscalDocument[]
+
+  @@unique([propertyId, code])
+  @@index([propertyId, status])
+  @@index([propertyId, checkInDate])
+  @@index([propertyId, checkOutDate])
+  // Consulta-chave: "quais reservas ocupam este quarto neste intervalo?"
+  @@index([roomId, checkInDate, checkOutDate])
+  @@index([primaryGuestId])
+  @@index([companyId, status])
+  @@index([invoiceId])
+  @@map("reservations")
+}
+
+/// Modelo de cobrança aplicado à reserva.
+enum BillingMode {
+  DEPOSIT_BALANCE     // Sinal (30%) + saldo no check-in (caso padrão B2C)
+  POSTPAID_CORPORATE  // Empresa paga via fatura mensal (B2B)
+  FULL_PREPAID        // 100% antecipado (futuro)
+  GUARANTEE_CARD      // Garantia no cartão, cobra na saída (futuro)
+}
+
+enum ReservationStatus {
+  PENDING           // criada, aguardando confirmação/pagamento
+  CONFIRMED         // confirmada (pagamento ok ou garantida)
+  CHECKED_IN        // hóspede no hotel
+  CHECKED_OUT       // hóspede saiu
+  CANCELLED         // cancelada antes da chegada
+  NO_SHOW           // não apareceu
+}
+
+enum ReservationSource {
+  DIRECT            // site próprio (link público)
+  WALK_IN           // chegou sem reserva
+  PHONE             // telefone
+  WHATSAPP          // WhatsApp
+  EMAIL             // e-mail
+  RECEPTION         // criada manualmente pela recepção
+  BOOKING_COM       // (futuro) Booking.com
+  AIRBNB            // (futuro)
+  EXPEDIA           // (futuro)
+  OTHER
+}
+
+/// Vínculo N:N entre reserva e hóspedes (titular + acompanhantes).
+model ReservationGuest {
+  id              String   @id @default(cuid())
+  reservationId   String
+  guestId         String
+  isPrimary       Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  reservation     Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  guest           Guest       @relation(fields: [guestId], references: [id])
+
+  @@unique([reservationId, guestId])
+  @@index([guestId])
+  @@map("reservation_guests")
+}
+
+
+// =====================================================================
+//  PAGAMENTOS
+// =====================================================================
+
+/// Cada Payment é UMA cobrança/transação. Vincula-se a:
+///   - Uma Reservation (caso B2C, sinal+saldo)
+///   - Uma Invoice corporativa (caso B2B, pagamento da fatura mensal)
+/// Exatamente um dos dois deve estar presente (constraint via service layer).
+model Payment {
+  id                  String   @id @default(cuid())
+  propertyId          String
+  reservationId       String?
+  invoiceId           String?
+
+  amount              Decimal  @db.Decimal(10, 2)
+  method              PaymentMethod
+  status              PaymentStatus @default(PENDING)
+
+  // ---- GATEWAY (Asaas no MVP) ----
+  gatewayProvider     String?                       // "asaas"
+  gatewayId           String?                       // ID externo
+  gatewayUrl          String?                       // link de pagamento (cartão)
+
+  // Pix
+  pixQrCode           String?                       // base64 da imagem
+  pixCopyPaste        String?                       // string copia-e-cola
+  pixExpiresAt        DateTime?
+
+  // Cartão
+  cardLastDigits      String?
+  cardBrand           String?
+  installments        Int?     @default(1)
+
+  // ---- DATAS ----
+  dueDate             DateTime?
+  paidAt              DateTime?
+  refundedAt          DateTime?
+
+  // ---- REEMBOLSO ----
+  refundedAmount      Decimal? @db.Decimal(10, 2)
+  refundReason        String?
+
+  notes               String?
+  webhookPayload      Json?                         // último payload recebido (debug)
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  property            Property     @relation(fields: [propertyId], references: [id])
+  reservation         Reservation? @relation(fields: [reservationId], references: [id])
+  invoice             Invoice?     @relation(fields: [invoiceId], references: [id])
+
+  @@index([propertyId, status])
+  @@index([reservationId])
+  @@index([invoiceId])
+  @@index([gatewayId])
+  @@map("payments")
+}
+
+enum PaymentMethod {
+  PIX
+  CREDIT_CARD
+  DEBIT_CARD
+  CASH
+  BANK_TRANSFER
+  OTHER
+}
+
+enum PaymentStatus {
+  PENDING             // aguardando pagamento
+  PROCESSING          // gateway processando
+  PAID                // confirmado
+  FAILED              // falhou
+  EXPIRED             // expirou (Pix)
+  REFUNDED            // estornado integralmente
+  PARTIALLY_REFUNDED  // estornado parcialmente
+  CANCELLED           // cancelado antes de pagar
+}
+
+
+// =====================================================================
+//  HOUSEKEEPING (LIMPEZA)
+// =====================================================================
+
+/// Tarefa de limpeza para um quarto específico.
+model CleaningTask {
+  id              String         @id @default(cuid())
+  propertyId      String
+  roomId          String
+
+  type            CleaningType   @default(CHECKOUT)
+  status          CleaningStatus @default(PENDING)
+  priority        Int            @default(0)         // maior = mais urgente
+
+  assignedToId    String?                            // camareira responsável
+  inspectedById   String?                            // supervisor que aprovou
+
+  scheduledFor    DateTime?                          // quando deve ser feita
+  startedAt       DateTime?
+  finishedAt      DateTime?
+  inspectedAt     DateTime?
+
+  durationMinutes Int?                               // tempo real de limpeza (calc.)
+  issuesReported  String?
+  photos          String[]                           // fotos de problemas (R2)
+  notes           String?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  property        Property @relation(fields: [propertyId], references: [id])
+  room            Room     @relation(fields: [roomId], references: [id])
+  assignedTo      User?    @relation("CleaningAssignee", fields: [assignedToId], references: [id])
+  inspectedBy     User?    @relation("CleaningInspector", fields: [inspectedById], references: [id])
+
+  @@index([propertyId, status])
+  @@index([assignedToId, status])
+  @@index([roomId])
+  @@index([scheduledFor])
+  @@map("cleaning_tasks")
+}
+
+enum CleaningType {
+  CHECKOUT     // após check-out (completa)
+  DAILY        // diária (hóspede in-house)
+  TURNDOWN     // serviço de cobertura noturna
+  DEEP_CLEAN   // limpeza profunda programada
+  MAINTENANCE  // após manutenção
+}
+
+enum CleaningStatus {
+  PENDING                // a fazer
+  IN_PROGRESS            // camareira atuando
+  AWAITING_INSPECTION    // aguardando supervisor
+  COMPLETED              // aprovada
+  REJECTED               // recusada (volta para IN_PROGRESS)
+}
+
+
+// =====================================================================
+//  AUDITORIA (LGPD + compliance)
+// =====================================================================
+
+/// Registro imutável de mutações importantes.
+/// Capturado via middleware Prisma ou serviço dedicado.
+model AuditLog {
+  id            String   @id @default(cuid())
+  propertyId    String
+  userId        String?
+
+  action        String                          // "reservation.created","guest.anonymized"
+  entityType    String                          // "Reservation","Guest","Payment"
+  entityId      String
+
+  changes       Json?                           // { field: { old, new } }
+  metadata      Json?                           // { ip, userAgent, source }
+
+  createdAt     DateTime @default(now())
+
+  property      Property @relation(fields: [propertyId], references: [id])
+  user          User?    @relation(fields: [userId], references: [id])
+
+  @@index([propertyId, createdAt(sort: Desc)])
+  @@index([entityType, entityId])
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("audit_logs")
+}
+
+
+// =====================================================================
+//  B2B / CORPORATIVO
+// =====================================================================
+
+/// Empresa cliente (convênio). Usada quando reserva é POSTPAID_CORPORATE.
+model Company {
+  id              String   @id @default(cuid())
+  propertyId      String
+
+  // ---- IDENTIFICAÇÃO ----
+  legalName       String                           // razão social
+  tradeName       String?                          // nome fantasia
+  cnpj            String                           // sem máscara
+  stateRegistration String?
+  municipalRegistration String?
+
+  // ---- CONTATO ----
+  email           String?
+  phone           String?
+  contactName     String?                          // pessoa responsável
+
+  // ---- ENDEREÇO FISCAL (necessário para NFS-e) ----
+  addressStreet       String?
+  addressNumber       String?
+  addressComplement   String?
+  addressNeighborhood String?
+  addressCity         String?
+  addressState        String?
+  addressZip          String?
+  addressCountry      String  @default("BR")
+
+  // ---- POLÍTICA COMERCIAL ----
+  defaultRateOverride Decimal? @db.Decimal(10, 2)  // tarifa negociada
+  paymentTermDays     Int      @default(30)        // prazo de pagamento (dias)
+  billingDay          Int?                          // dia do mês para fechar fatura (1-28)
+  creditLimit         Decimal? @db.Decimal(12, 2)  // limite de crédito (opcional)
+
+  active          Boolean  @default(true)
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  deletedAt       DateTime?
+
+  property        Property @relation(fields: [propertyId], references: [id])
+  guests          Guest[]
+  reservations    Reservation[]
+  invoices        Invoice[]
+
+  @@unique([propertyId, cnpj])
+  @@index([propertyId, active])
+  @@map("companies")
+}
+
+/// Fatura corporativa mensal — consolida várias reservas POSTPAID_CORPORATE.
+model Invoice {
+  id              String        @id @default(cuid())
+  propertyId      String
+  companyId       String
+
+  number          String                              // "FAT-2026-05-001"
+  status          InvoiceStatus @default(OPEN)
+
+  // ---- PERÍODO ----
+  periodStart     DateTime  @db.Date                   // primeiro dia do período
+  periodEnd       DateTime  @db.Date                   // último dia do período
+
+  // ---- VALORES ----
+  subtotal        Decimal   @db.Decimal(12, 2) @default(0)  // soma das reservas
+  consumptions    Decimal   @db.Decimal(12, 2) @default(0)  // soma de consumos
+  discount        Decimal   @db.Decimal(12, 2) @default(0)
+  totalAmount     Decimal   @db.Decimal(12, 2) @default(0)
+  paidAmount      Decimal   @db.Decimal(12, 2) @default(0)
+
+  // ---- DATAS ----
+  issuedAt        DateTime?                           // fechamento da fatura
+  dueDate         DateTime? @db.Date                  // vencimento
+  paidAt          DateTime?
+
+  // ---- DOCUMENTOS ----
+  pdfUrl          String?                             // boleto/PDF gerado
+  notes           String?
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  property        Property         @relation(fields: [propertyId], references: [id])
+  company         Company          @relation(fields: [companyId], references: [id])
+  reservations    Reservation[]
+  payments        Payment[]
+  fiscalDocuments FiscalDocument[]
+
+  @@unique([propertyId, number])
+  @@index([propertyId, status])
+  @@index([companyId, status])
+  @@index([dueDate])
+  @@map("invoices")
+}
+
+enum InvoiceStatus {
+  OPEN          // em formação (período corrente, ainda acumulando)
+  CLOSED        // período fechado, aguardando pagamento
+  PAID          // paga
+  OVERDUE       // vencida
+  CANCELLED     // cancelada
+}
+
+
+// =====================================================================
+//  PRODUTOS, ESTOQUE E CONSUMOS
+// =====================================================================
+
+/// Produto vendável: frigobar, restaurante, bar, serviços avulsos.
+model Product {
+  id            String        @id @default(cuid())
+  propertyId    String
+
+  sku           String                              // código interno
+  name          String                              // "Coca-Cola 350ml"
+  description   String?
+  category      ProductCategory
+  unitPrice     Decimal       @db.Decimal(10, 2)
+  unitCost      Decimal?      @db.Decimal(10, 2)   // custo (margem)
+  unitMeasure   String        @default("UN")        // UN, KG, L
+
+  // ---- FISCAL (para NFS-e item) ----
+  fiscalCode    String?                              // código serviço (se aplicável)
+  ncm           String?                              // NCM (para produtos)
+  taxable       Boolean       @default(true)
+
+  active        Boolean       @default(true)
+  imageUrl      String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  property      Property      @relation(fields: [propertyId], references: [id])
+  stockItems    Stock[]
+  chargeItems   ChargeItem[]
+  movements     StockMovement[]
+
+  @@unique([propertyId, sku])
+  @@index([propertyId, category, active])
+  @@map("products")
+}
+
+enum ProductCategory {
+  MINIBAR         // frigobar
+  RESTAURANT      // restaurante
+  BAR             // bar
+  ROOM_SERVICE    // room service
+  LAUNDRY         // lavanderia
+  SPA             // serviços spa
+  EXTRA_SERVICE   // outros (passeio, transfer)
+  AMENITY         // amenities cobráveis (kit higiene extra)
+}
+
+/// Localização de estoque: um frigobar (por quarto) ou um depósito do restaurante.
+model StockLocation {
+  id            String   @id @default(cuid())
+  propertyId    String
+
+  name          String                              // "Frigobar Q201", "Depósito Restaurante"
+  type          StockLocationType
+  roomId        String?                              // se for frigobar de um quarto
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  property      Property @relation(fields: [propertyId], references: [id])
+  stockItems    Stock[]
+  movements     StockMovement[]
+
+  @@index([propertyId, type])
+  @@index([roomId])
+  @@map("stock_locations")
+}
+
+enum StockLocationType {
+  MINIBAR_ROOM    // frigobar de um quarto específico
+  WAREHOUSE       // depósito central
+  POS             // ponto de venda (restaurante/bar)
+}
+
+/// Posição de estoque atual de um produto em uma localização.
+model Stock {
+  id              String   @id @default(cuid())
+  productId       String
+  locationId      String
+
+  quantity        Decimal  @db.Decimal(10, 3) @default(0)
+  minLevel        Decimal? @db.Decimal(10, 3)   // alerta de reposição
+  maxLevel        Decimal? @db.Decimal(10, 3)   // capacidade (frigobar = quanto cabe)
+
+  lastCountedAt   DateTime?                      // última contagem física
+  updatedAt       DateTime @updatedAt
+
+  product         Product       @relation(fields: [productId], references: [id])
+  location        StockLocation @relation(fields: [locationId], references: [id])
+
+  @@unique([productId, locationId])
+  @@index([locationId])
+  @@map("stocks")
+}
+
+/// Movimentação de estoque (entrada, saída, ajuste). Log imutável.
+model StockMovement {
+  id              String       @id @default(cuid())
+  productId       String
+  locationId      String
+
+  type            StockMovementType
+  quantity        Decimal      @db.Decimal(10, 3)   // positivo (entrada) ou negativo (saída)
+  reason          String?                            // motivo (livre)
+
+  // Vínculos opcionais (movimento gerado por uma origem específica)
+  chargeItemId    String?      @unique                // se saída por consumo
+  userId          String?                             // quem registrou
+
+  createdAt       DateTime     @default(now())
+
+  product         Product       @relation(fields: [productId], references: [id])
+  location        StockLocation @relation(fields: [locationId], references: [id])
+  chargeItem      ChargeItem?   @relation(fields: [chargeItemId], references: [id])
+
+  @@index([productId, createdAt(sort: Desc)])
+  @@index([locationId, createdAt(sort: Desc)])
+  @@map("stock_movements")
+}
+
+enum StockMovementType {
+  IN              // entrada (compra, transferência)
+  OUT             // saída por consumo (vinculada a chargeItem)
+  ADJUSTMENT      // ajuste manual (contagem física)
+  TRANSFER_IN     // transferência entre locais (recebido)
+  TRANSFER_OUT    // transferência entre locais (enviado)
+  LOSS            // perda, vencimento, quebra
+}
+
+/// Lançamento na conta do hóspede (folio).
+/// Pode ser uma diária, um consumo, uma taxa avulsa.
+model ChargeItem {
+  id              String       @id @default(cuid())
+  propertyId      String
+  reservationId   String
+
+  type            ChargeItemType
+  productId       String?                            // se for produto do catálogo
+  description     String                              // "Diária 28/05 - LUX VM", "Coca 350ml"
+  quantity        Decimal      @db.Decimal(10, 3) @default(1)
+  unitPrice       Decimal      @db.Decimal(10, 2)
+  totalAmount     Decimal      @db.Decimal(10, 2)   // quantity * unitPrice - discount
+
+  discount        Decimal      @db.Decimal(10, 2) @default(0)
+  taxAmount       Decimal      @db.Decimal(10, 2) @default(0)
+
+  // ---- ORIGEM ----
+  registeredById  String?                            // userId (recepção/garçom)
+  registeredAt    DateTime     @default(now())
+  voidedAt        DateTime?                          // estornado
+  voidReason      String?
+
+  notes           String?
+
+  property        Property      @relation(fields: [propertyId], references: [id])
+  reservation     Reservation   @relation(fields: [reservationId], references: [id])
+  product         Product?      @relation(fields: [productId], references: [id])
+  stockMovement   StockMovement?
+
+  @@index([propertyId, registeredAt(sort: Desc)])
+  @@index([reservationId])
+  @@index([productId])
+  @@map("charge_items")
+}
+
+enum ChargeItemType {
+  ROOM_NIGHT      // diária (gerada automaticamente)
+  CONSUMPTION     // consumo de produto
+  FEE             // taxa (taxa de serviço, taxa turismo)
+  ADJUSTMENT      // ajuste manual
+  COURTESY        // cortesia (valor 0, registrado para histórico)
+  REFUND          // estorno
+}
+
+
+// =====================================================================
+//  DOCUMENTOS FISCAIS (NFS-e via Focus NFe)
+// =====================================================================
+
+/// Documento fiscal emitido (NFS-e principalmente, no MVP).
+/// Vinculado a uma reserva (B2C) OU a uma invoice corporativa (B2B).
+model FiscalDocument {
+  id              String       @id @default(cuid())
+  propertyId      String
+
+  type            FiscalDocType @default(NFSE)
+  status          FiscalDocStatus @default(PENDING)
+
+  // ---- VÍNCULO (uma das duas) ----
+  reservationId   String?
+  invoiceId       String?
+
+  // ---- IDENTIFICAÇÃO ----
+  number          String?                            // número emitido pela prefeitura
+  series          String?
+  verificationCode String?                           // código de verificação
+  rpsNumber       String?                            // RPS (recibo provisório)
+
+  // ---- VALORES ----
+  serviceAmount   Decimal      @db.Decimal(12, 2)
+  deductions      Decimal      @db.Decimal(12, 2) @default(0)
+  netAmount       Decimal      @db.Decimal(12, 2)
+  issAmount       Decimal      @db.Decimal(12, 2) @default(0)
+  issRate         Decimal      @db.Decimal(5, 2)
+
+  // ---- TOMADOR (snapshot na emissão) ----
+  taxpayerName        String
+  taxpayerDocument    String                        // CPF ou CNPJ
+  taxpayerEmail       String?
+
+  // ---- INTEGRAÇÃO ----
+  providerRef     String?                            // ID no Focus NFe
+  xmlUrl          String?                            // URL do XML armazenado
+  pdfUrl          String?                            // URL do DANFSE
+  issuedAt        DateTime?                          // quando foi de fato emitida
+  cancelledAt     DateTime?
+  cancelReason    String?
+
+  // ---- ERROS ----
+  errorMessage    String?                            // se falhou
+  attemptCount    Int          @default(0)
+  lastAttemptAt   DateTime?
+
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  property        Property     @relation(fields: [propertyId], references: [id])
+  reservation     Reservation? @relation(fields: [reservationId], references: [id])
+  invoice         Invoice?     @relation(fields: [invoiceId], references: [id])
+
+  @@index([propertyId, status])
+  @@index([propertyId, issuedAt(sort: Desc)])
+  @@index([reservationId])
+  @@index([invoiceId])
+  @@map("fiscal_documents")
+}
+
+enum FiscalDocType {
+  NFSE          // Nota Fiscal de Serviço eletrônica (hospedagem)
+  NFE           // Nota Fiscal eletrônica (produtos — futuro)
+  RECEIPT       // Recibo simples (sem efeito fiscal)
+}
+
+enum FiscalDocStatus {
+  PENDING       // criada, aguardando envio
+  PROCESSING    // enviada ao Focus NFe
+  ISSUED        // emitida com sucesso
+  CANCELLED     // cancelada
+  REJECTED      // rejeitada pela prefeitura
+  ERROR         // erro técnico
+}

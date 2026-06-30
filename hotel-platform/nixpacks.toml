@@ -1,0 +1,16 @@
+[phases.setup]
+nixPkgs = ["nodejs_20", "pnpm-9_x"]
+
+[phases.install]
+cmds = ["pnpm install --no-frozen-lockfile"]
+
+[phases.build]
+cmds = [
+  "cd packages/database && npx prisma generate",
+  "pnpm --filter @hotel/shared build || true",
+  "pnpm --filter @hotel/database build || true",
+  "pnpm --filter @hotel/api build"
+]
+
+[start]
+cmd = "cd apps/api && pnpm deploy:start"
