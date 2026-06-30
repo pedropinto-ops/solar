@@ -51,6 +51,7 @@ export class RolesGuard implements CanActivate {
  */
 export interface AuthenticatedUser {
   userId: string;
+  name: string;
   email: string;
   role: string;
   propertyId: string;

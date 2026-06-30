@@ -13,7 +13,7 @@ const sizes = {
 };
 
 export function Avatar({ name, size = 'md', className }: AvatarProps) {
-  const initials = name
+  const initials = (name ?? '')
     .split(' ')
     .filter(Boolean)
     .map((p) => p[0])
