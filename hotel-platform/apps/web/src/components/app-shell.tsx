@@ -7,6 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import { apiFetch, getToken, clearToken } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
 import { Avatar } from '@/components/ui/avatar';
+import { LogoMark } from '@/components/ui/logo';
 
 interface NavItem {
   href: string;
@@ -136,9 +137,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen flex bg-sand-50">
       {/* Sidebar desktop (md+) */}
       <aside className="hidden md:flex w-60 shrink-0 bg-cream border-r border-sand-200 flex-col">
-        <div className="px-5 py-6 border-b border-sand-200">
-          <div className="font-serif-display text-lg text-teal-900">Pousada Vista Mar</div>
-          <div className="text-xs mt-0.5 text-ink-500">Praia do Forte · BA</div>
+        <div className="px-5 py-6 border-b border-sand-200 flex items-center gap-3">
+          <LogoMark className="w-9 h-11 text-teal-900 shrink-0" strokeWidth={5} />
+          <div className="min-w-0">
+            <div className="font-serif-display text-lg text-teal-900 leading-tight">Solar Irará</div>
+            <div className="text-[10px] tracking-[0.2em] uppercase text-ink-500 mt-0.5">Hotel · Irará-BA</div>
+          </div>
         </div>
 
         <nav className="flex-1 px-3 py-4 space-y-0.5">

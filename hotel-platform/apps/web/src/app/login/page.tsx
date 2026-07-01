@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiFetch, setToken, ApiError } from '@/lib/api-client';
+import { LogoMark } from '@/components/ui/logo';
 
 interface AuthResponse {
   token: string;
@@ -39,9 +40,11 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-sand-50 px-5 py-10">
       <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
-          <div className="font-serif-display text-3xl text-teal-900 mb-1">Pousada Vista Mar</div>
-          <div className="text-sm text-ink-500">Plataforma de gestão</div>
+        <div className="flex flex-col items-center text-center mb-8">
+          <LogoMark className="w-[72px] h-[92px] text-teal-900 mb-3" />
+          <div className="font-serif-display text-4xl text-teal-900 leading-none">Solar Irará</div>
+          <div className="text-xs tracking-[0.35em] uppercase text-teal-700 mt-2 pl-[0.35em]">Hotel</div>
+          <div className="text-sm text-ink-500 mt-3">Irará · Bahia</div>
         </div>
 
         <form

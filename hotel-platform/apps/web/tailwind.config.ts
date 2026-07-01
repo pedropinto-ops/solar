@@ -5,36 +5,52 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        // ---- Solar Irará Hotel — paleta terracota + cremes quentes ----
+        // Marrom-café quente (textos)
         ink: {
-          950: '#0F1F26',
-          700: '#3A4A52',
-          500: '#6B7A82',
-          300: '#B5BFC4',
-          100: '#E5E9EB',
+          950: '#33241A',
+          700: '#5C4A3C',
+          500: '#8C7768',
+          300: '#C3B2A2',
+          100: '#EADFD4',
         },
+        // PRIMÁRIA = terracota da marca (nome "teal" mantido p/ re-skin do app)
         teal: {
-          900: '#0E3940',
-          700: '#1A5560',
-          500: '#2A7785',
-          100: '#C4DBE0',
-          50:  '#E8F0F2',
+          900: '#9E4620',
+          700: '#B85C2E',
+          500: '#CB7A4C',
+          100: '#F1DBC9',
+          50:  '#FBF2EA',
         },
+        // Alias semântico da terracota (usar em código novo)
+        clay: {
+          900: '#7C3717',
+          800: '#9E4620',
+          700: '#B85C2E',
+          600: '#C56A3A',
+          500: '#CB7A4C',
+          300: '#E3B291',
+          100: '#F1DBC9',
+          50:  '#FBF2EA',
+        },
+        // Acento mel/ocre (harmoniza com a terracota)
         gold: {
-          700: '#9D7A3C',
-          500: '#C49B5C',
-          100: '#F5EBD8',
-          50:  '#FBF6EC',
+          700: '#B27B32',
+          500: '#D2A45E',
+          100: '#F5E8CF',
+          50:  '#FBF4E7',
         },
+        // Neutros areia quentes
         sand: {
-          200: '#E6DECF',
-          100: '#F2EDE4',
-          50:  '#FAF7F2',
+          200: '#E9DBC9',
+          100: '#F4EADD',
+          50:  '#FBF6EE',
         },
-        cream: '#FFFEFB',
+        cream: '#FFFDF9',
       },
       fontFamily: {
-        serif: ['"Source Serif Pro"', 'Georgia', 'serif'],
-        sans: ['Inter', 'system-ui', 'sans-serif'],
+        serif: ['"Fraunces"', 'Georgia', 'serif'],
+        sans: ['"Poppins"', 'system-ui', 'sans-serif'],
       },
       letterSpacing: {
         wider: '0.06em',

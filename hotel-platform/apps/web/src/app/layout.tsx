@@ -1,19 +1,16 @@
 import './globals.css';
-import { Inter } from 'next/font/google';
 import type { Metadata } from 'next';
 import { QueryProvider } from '@/lib/query-provider';
 
-const inter = Inter({ subsets: ['latin'] });
-
 export const metadata: Metadata = {
-  title: 'Hotel Platform',
-  description: 'Plataforma de gestão hoteleira',
+  title: 'Solar Irará Hotel',
+  description: 'Solar Irará Hotel — plataforma de gestão',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pt-BR">
-      <body className={inter.className}>
+      <body className="font-sans">
         <QueryProvider>{children}</QueryProvider>
       </body>
     </html>
