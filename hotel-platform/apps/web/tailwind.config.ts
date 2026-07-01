@@ -33,20 +33,27 @@ const config: Config = {
           100: '#F1DBC9',
           50:  '#FBF2EA',
         },
-        // Acento mel/ocre (harmoniza com a terracota)
+        // Dourado-mostarda do sol da marca (acento quente)
         gold: {
-          700: '#B27B32',
-          500: '#D2A45E',
-          100: '#F5E8CF',
-          50:  '#FBF4E7',
+          700: '#C8871F',
+          500: '#E8A33D',
+          300: '#F0C079',
+          100: '#F8E4C0',
+          50:  '#FCF4E2',
         },
-        // Neutros areia quentes
+        // Verde-folha (botânica da identidade — acentos sutis)
+        leaf: {
+          700: '#4E7A34',
+          500: '#6E9E4F',
+          100: '#DCE8CC',
+        },
+        // Neutros areia / creme quentes (fundo tipo timbrado)
         sand: {
-          200: '#E9DBC9',
-          100: '#F4EADD',
-          50:  '#FBF6EE',
+          200: '#E7D6C0',
+          100: '#F2E6D4',
+          50:  '#F8F0E1',
         },
-        cream: '#FFFDF9',
+        cream: '#FFFBF4',
       },
       fontFamily: {
         serif: ['"Fraunces"', 'Georgia', 'serif'],

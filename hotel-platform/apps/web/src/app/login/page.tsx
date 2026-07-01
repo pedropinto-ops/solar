@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiFetch, setToken, ApiError } from '@/lib/api-client';
-import { LogoMark } from '@/components/ui/logo';
+import { Logo, Botanical } from '@/components/ui/logo';
 
 interface AuthResponse {
   token: string;
@@ -38,13 +38,13 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-sand-50 px-5 py-10">
-      <div className="w-full max-w-sm">
+    <div className="min-h-screen flex items-center justify-center bg-sand-50 px-5 py-10 relative overflow-hidden">
+      <Botanical className="pointer-events-none select-none absolute -top-8 -right-10 w-40 sm:w-48 opacity-95" />
+      <Botanical className="pointer-events-none select-none absolute -bottom-10 -left-12 w-44 sm:w-52 opacity-95 rotate-180" />
+      <div className="w-full max-w-sm relative">
         <div className="flex flex-col items-center text-center mb-8">
-          <LogoMark className="w-[72px] h-[92px] text-teal-900 mb-3" />
-          <div className="font-serif-display text-4xl text-teal-900 leading-none">Solar Irará</div>
-          <div className="text-xs tracking-[0.35em] uppercase text-teal-700 mt-2 pl-[0.35em]">Hotel</div>
-          <div className="text-sm text-ink-500 mt-3">Irará · Bahia</div>
+          <Logo className="w-36 h-auto mb-2 drop-shadow-sm" />
+          <div className="text-sm text-ink-500 tracking-wide">Irará · Bahia</div>
         </div>
 
         <form
