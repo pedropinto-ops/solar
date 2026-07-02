@@ -6,7 +6,7 @@ cmds = ["pnpm install --no-frozen-lockfile"]
 
 [phases.build]
 cmds = [
-  "pnpm --filter @hotel/database run generate",
+  "cd packages/database && node node_modules/prisma/build/index.js generate",
   "pnpm --filter @hotel/shared build || true",
   "pnpm --filter @hotel/database build || true",
   "pnpm --filter @hotel/api build"
