@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiFetch, setToken, ApiError } from '@/lib/api-client';
 import { Logo, Botanical } from '@/components/ui/logo';
+import { APP_VERSION } from '@/lib/version';
 
 interface AuthResponse {
   token: string;
@@ -95,6 +96,10 @@ export default function LoginPage() {
             Esqueceu sua senha? Fale com o administrador.
           </div>
         </form>
+
+        <div className="text-center text-[11px] text-ink-300 mt-6">
+          v{APP_VERSION}
+        </div>
       </div>
     </div>
   );

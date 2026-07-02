@@ -8,6 +8,7 @@ import { apiFetch, getToken, clearToken } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
 import { Avatar } from '@/components/ui/avatar';
 import { Logo } from '@/components/ui/logo';
+import { APP_VERSION } from '@/lib/version';
 
 interface NavItem {
   href: string;
@@ -195,7 +196,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* Conteúdo principal */}
-      <main className="flex-1 overflow-auto pb-20 md:pb-0">{children}</main>
+      <main className="flex-1 overflow-auto pb-20 md:pb-0">
+        {children}
+        <footer className="px-5 py-4 text-center text-[11px] text-ink-300">
+          Solar Irará Hotel · v{APP_VERSION}
+        </footer>
+      </main>
 
       {/* Bottom nav mobile (md-) */}
       <nav
