@@ -97,11 +97,11 @@ export default function RoomsPage() {
                       STATUS_ACCENT[r.status] ?? 'border-l-ink-300',
                     )}
                   >
-                    <div className="font-serif-display text-xl nums text-ink-950">
-                      {r.number}
+                    <div className="font-serif-display text-lg text-ink-950 leading-tight truncate">
+                      {r.name ?? r.number}
                     </div>
                     <div className="text-xs text-ink-500 mt-0.5 truncate">
-                      {r.roomType.name}
+                      {r.number} · {r.roomType.name}
                     </div>
                     <div className="mt-2">
                       <StatusPill status={r.status} />

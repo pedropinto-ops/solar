@@ -184,7 +184,8 @@ model Room {
   propertyId   String
   roomTypeId   String
 
-  number       String                              // "101", "Bangalô 3"
+  number       String                              // "101", "001"
+  name         String?                             // nome do quarto: "Candeal", "Massaranduba"
   floor        Int?
   status       RoomStatus @default(AVAILABLE)
   notes        String?                             // "ar quebrado", "vista parcial"

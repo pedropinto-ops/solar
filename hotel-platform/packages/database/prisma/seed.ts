@@ -194,42 +194,34 @@ async function main() {
   console.log('🚪 Criando quartos...');
   const rooms: Array<{ id: string; number: string }> = [];
 
-  // 6 Standard (101-106)
-  for (let i = 1; i <= 6; i++) {
+  // Quartos reais do Solar Irará Hotel (17)
+  const realRooms: Array<{ number: string; name: string; floor: number; typeId: string }> = [
+    { number: '001', name: 'Massaranduba', floor: 0, typeId: stdType.id },
+    { number: '002', name: 'Mangabeira', floor: 0, typeId: stdType.id },
+    { number: '101', name: 'Candeal', floor: 1, typeId: stdType.id },
+    { number: '102', name: 'Murici', floor: 1, typeId: stdType.id },
+    { number: '103', name: 'Coqueiro', floor: 1, typeId: stdType.id },
+    { number: '104', name: 'Caroba', floor: 1, typeId: stdType.id },
+    { number: '105', name: 'Caboronga', floor: 1, typeId: stdType.id },
+    { number: '106', name: 'Santo Antônio', floor: 1, typeId: stdType.id },
+    { number: '107', name: 'Largo', floor: 1, typeId: stdType.id },
+    { number: '108', name: 'Juazeiro', floor: 1, typeId: stdType.id },
+    { number: '109', name: 'Sucupira', floor: 1, typeId: stdType.id },
+    { number: '110', name: 'Várzea', floor: 1, typeId: stdType.id },
+    { number: '111', name: 'Bento Simões', floor: 1, typeId: luxType.id },
+    { number: '112', name: 'Sobradinho', floor: 1, typeId: luxType.id },
+    { number: '113', name: 'Brotas', floor: 1, typeId: luxType.id },
+    { number: '114', name: 'Jardin', floor: 1, typeId: masterType.id },
+    { number: '115', name: 'Baixinha', floor: 1, typeId: masterType.id },
+  ];
+  for (const r of realRooms) {
     const room = await prisma.room.create({
       data: {
         propertyId: property.id,
-        roomTypeId: stdType.id,
-        number: `10${i}`,
-        floor: 1,
-        status: 'AVAILABLE',
-      },
-    });
-    rooms.push({ id: room.id, number: room.number });
-  }
-
-  // 4 Luxo (201-204)
-  for (let i = 1; i <= 4; i++) {
-    const room = await prisma.room.create({
-      data: {
-        propertyId: property.id,
-        roomTypeId: luxType.id,
-        number: `20${i}`,
-        floor: 2,
-        status: 'AVAILABLE',
-      },
-    });
-    rooms.push({ id: room.id, number: room.number });
-  }
-
-  // 2 Master (301-302)
-  for (let i = 1; i <= 2; i++) {
-    const room = await prisma.room.create({
-      data: {
-        propertyId: property.id,
-        roomTypeId: masterType.id,
-        number: `30${i}`,
-        floor: 3,
+        roomTypeId: r.typeId,
+        number: r.number,
+        name: r.name,
+        floor: r.floor,
         status: 'AVAILABLE',
       },
     });
@@ -644,7 +636,7 @@ async function main() {
   console.log('🧹 Criando tarefas de limpeza de exemplo...');
 
   const room102 = rooms.find((r) => r.number === '102')!;
-  const room201 = rooms.find((r) => r.number === '201')!;
+  const room201 = rooms.find((r) => r.number === '111')!;
 
   // Quarto 102: DIRTY, pendente, atribuído à Maria
   await prisma.room.update({

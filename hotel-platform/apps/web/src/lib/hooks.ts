@@ -60,6 +60,7 @@ export interface ReservationDetail extends Reservation {
 export interface Room {
   id: string;
   number: string;
+  name: string | null;
   floor: number | null;
   status: string;
   roomType: { id: string; name: string };
