@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { AppShell, Icon } from '@/components/app-shell';
 import { PageHeader } from '@/components/ui/page-header';
@@ -21,8 +21,8 @@ import { fmtDate, fmtCurrency, fmtDateTime } from '@/lib/format';
 import { ApiError } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
 
-export default function ReservationPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
+export default function ReservationPage({ params }: { params: { id: string } }) {
+  const { id } = params;
   const { data: res, isLoading } = useReservation(id);
   const [error, setError] = useState<string | null>(null);
   const [showCharge, setShowCharge] = useState(false);

@@ -1,7 +1,7 @@
 'use client';
 
 /* eslint-disable @next/next/no-img-element */
-import { use, useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { apiFetch, ApiError } from '@/lib/api-client';
 import { fmtCurrency, toDateInput, addDays } from '@/lib/format';
@@ -57,9 +57,9 @@ function fmtDate(iso: string): string {
 export default function PublicReservePage({
   params,
 }: {
-  params: Promise<{ slug: string }>;
+  params: { slug: string };
 }) {
-  const { slug } = use(params);
+  const { slug } = params;
   const [step, setStep] = useState<Step>('search');
 
   const tomorrow = useMemo(() => toDateInput(addDays(new Date(), 1)), []);
