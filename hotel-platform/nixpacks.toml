@@ -6,7 +6,7 @@ cmds = ["pnpm install --no-frozen-lockfile"]
 
 [phases.build]
 cmds = [
-  "cd packages/database && npx prisma generate",
+  "pnpm --filter @hotel/database exec prisma generate",
   "pnpm --filter @hotel/shared build || true",
   "pnpm --filter @hotel/database build || true",
   "pnpm --filter @hotel/api build"
