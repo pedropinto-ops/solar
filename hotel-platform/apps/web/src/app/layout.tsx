@@ -1,6 +1,7 @@
 import './globals.css';
 import type { Metadata } from 'next';
 import { QueryProvider } from '@/lib/query-provider';
+import { VersionChecker } from '@/components/version-checker';
 
 export const metadata: Metadata = {
   title: 'Solar Irará Hotel',
@@ -12,6 +13,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="pt-BR">
       <body className="font-sans">
         <QueryProvider>{children}</QueryProvider>
+        <VersionChecker />
       </body>
     </html>
   );
