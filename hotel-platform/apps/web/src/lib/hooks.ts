@@ -514,3 +514,87 @@ export function useRefundPayment() {
     },
   });
 }
+
+// ============================================================
+// Almoxarifado (estoque)
+// ============================================================
+
+export interface StockProduct {
+  id: string;
+  sku: string;
+  name: string;
+  category: string;
+  unitMeasure: string;
+  unitPrice: number;
+  unitCost: number | null;
+  quantity: number;
+  minLevel: number | null;
+  low: boolean;
+}
+
+export interface StockMovementItem {
+  id: string;
+  type: 'IN' | 'OUT' | 'LOSS' | 'ADJUSTMENT' | 'TRANSFER_IN' | 'TRANSFER_OUT';
+  quantity: number;
+  reason: string | null;
+  createdAt: string;
+  product: { name: string; unitMeasure: string };
+  userName: string | null;
+}
+
+function invalidateStock(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: ['stock'] });
+}
+
+export function useStockProducts() {
+  return useQuery({
+    queryKey: ['stock', 'products'],
+    queryFn: () => apiFetch<StockProduct[]>('/stock/products'),
+  });
+}
+
+export function useStockMovements() {
+  return useQuery({
+    queryKey: ['stock', 'movements'],
+    queryFn: () => apiFetch<StockMovementItem[]>('/stock/movements'),
+  });
+}
+
+export function useCreateProduct() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      name: string;
+      sku?: string;
+      category: string;
+      unitMeasure: string;
+      unitPrice: number;
+      unitCost?: number;
+      initialQuantity: number;
+      minLevel?: number;
+    }) => apiFetch('/stock/products', { method: 'POST', body }),
+    onSuccess: () => invalidateStock(qc),
+  });
+}
+
+export function useUpdateProduct() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ productId, ...body }: { productId: string } & Record<string, unknown>) =>
+      apiFetch(`/stock/products/${productId}`, { method: 'PATCH', body }),
+    onSuccess: () => invalidateStock(qc),
+  });
+}
+
+export function useStockMove() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      productId: string;
+      type: 'IN' | 'OUT' | 'LOSS' | 'ADJUSTMENT';
+      quantity: number;
+      reason?: string;
+    }) => apiFetch('/stock/movements', { method: 'POST', body }),
+    onSuccess: () => invalidateStock(qc),
+  });
+}

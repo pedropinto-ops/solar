@@ -15,6 +15,7 @@ import { HousekeepingModule } from './modules/housekeeping/housekeeping.module.j
 import { UserModule } from './modules/user/user.module.js';
 import { PaymentModule } from './modules/payment/payment.module.js';
 import { PublicModule } from './modules/public/public.module.js';
+import { StockModule } from './modules/stock/stock.module.js';
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { PublicModule } from './modules/public/public.module.js';
     UserModule,
     PaymentModule,
     PublicModule,
+    StockModule,
   ],
   controllers: [HealthController],
   providers: [

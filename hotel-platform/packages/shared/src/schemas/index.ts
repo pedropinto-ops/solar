@@ -4,3 +4,4 @@ export * from './reservation.js';
 export * from './housekeeping.js';
 export * from './payment.js';
 export * from './public-reservation.js';
+export * from './stock.js';

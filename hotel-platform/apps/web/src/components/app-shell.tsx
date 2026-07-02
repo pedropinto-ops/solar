@@ -34,6 +34,12 @@ const NAV_ITEMS: NavItem[] = [
     icon: 'sparkles',
     roles: ['HOUSEKEEPER'],
   },
+  {
+    href: '/almoxarifado',
+    label: 'Almoxarifado',
+    icon: 'box',
+    roles: ['ADMIN', 'MANAGER', 'HOUSEKEEPING_SUPERVISOR'],
+  },
 ];
 
 // Ícones inline (sem libs externas)
@@ -82,6 +88,13 @@ function Icon({ name, className }: { name: string; className?: string }) {
       return (
         <svg className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
           <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+        </svg>
+      );
+    case 'box':
+      return (
+        <svg className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 8l-9-5-9 5v8l9 5 9-5z" />
+          <path d="M3 8l9 5 9-5" /><line x1="12" y1="13" x2="12" y2="21" />
         </svg>
       );
     case 'logout':

@@ -833,6 +833,9 @@ enum ProductCategory {
   SPA             // serviços spa
   EXTRA_SERVICE   // outros (passeio, transfer)
   AMENITY         // amenities cobráveis (kit higiene extra)
+  SUPPLIES        // insumos / material de limpeza e escritório
+  LINEN           // enxoval (lençóis, toalhas)
+  MAINTENANCE     // material de manutenção
 }
 
 /// Localização de estoque: um frigobar (por quarto) ou um depósito do restaurante.
