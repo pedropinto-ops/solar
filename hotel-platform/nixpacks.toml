@@ -6,9 +6,12 @@ cmds = ["pnpm install --no-frozen-lockfile"]
 
 [phases.build]
 cmds = [
+  # Restaura permissão de execução dos shims (.bin) — camada de cache do
+  # builder às vezes perde o bit de execução ("prisma: Permission denied")
+  "find . -path '*/node_modules/.bin/*' -exec chmod +x {} + 2>/dev/null || true",
   "cd packages/database && node node_modules/prisma/build/index.js generate",
-  "pnpm --filter @hotel/shared build || true",
-  "pnpm --filter @hotel/database build || true",
+  "pnpm --filter @hotel/shared build",
+  "pnpm --filter @hotel/database build",
   "pnpm --filter @hotel/api build"
 ]
 
