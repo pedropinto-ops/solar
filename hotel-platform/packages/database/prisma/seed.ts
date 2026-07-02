@@ -142,51 +142,22 @@ async function main() {
   // ROOM TYPES
   // ----------------------------------------------------------
   console.log('🛏️  Criando categorias de quarto...');
+  // Categoria única — todos os quartos do Solar Irará são do mesmo tipo.
   const stdType = await prisma.roomType.create({
     data: {
       propertyId: property.id,
-      name: 'Standard Casal',
-      description: 'Quarto confortável com cama de casal, ar-condicionado e vista para o jardim.',
+      name: 'Quarto Standard',
+      description: 'Quarto confortável com ar-condicionado, TV e frigobar.',
       basePrice: dec(280),
       maxOccupancy: 2,
       maxAdults: 2,
-      maxChildren: 0,
-      bedConfig: '1 cama queen',
-      sizeSqm: 22,
-      amenities: ['wifi', 'ar', 'tv', 'cofre', 'frigobar'],
-    },
-  });
-  const luxType = await prisma.roomType.create({
-    data: {
-      propertyId: property.id,
-      name: 'Luxo',
-      description: 'Quarto luxuoso com varanda privativa e vista para o jardim.',
-      basePrice: dec(450),
-      maxOccupancy: 3,
-      maxAdults: 2,
       maxChildren: 1,
-      bedConfig: '1 cama king + 1 sofá-cama',
-      sizeSqm: 35,
-      amenities: ['wifi', 'ar', 'tv', 'cofre', 'frigobar', 'varanda', 'vista-mar'],
+      bedConfig: '1 cama de casal',
+      sizeSqm: 22,
+      amenities: ['wifi', 'ar', 'tv', 'frigobar'],
     },
   });
-  const masterType = await prisma.roomType.create({
-    data: {
-      propertyId: property.id,
-      name: 'Suíte Master',
-      description: 'Suíte ampla com hidromassagem, sala de estar e jacuzzi privativa.',
-      basePrice: dec(780),
-      maxOccupancy: 4,
-      maxAdults: 2,
-      maxChildren: 2,
-      bedConfig: '1 cama king + 1 sofá-cama',
-      sizeSqm: 55,
-      amenities: ['wifi', 'ar', 'tv', 'cofre', 'frigobar', 'varanda', 'vista-mar', 'hidromassagem', 'jacuzzi'],
-    },
-  });
-  console.log(`   ✅ ${stdType.name} (R$ ${stdType.basePrice})`);
-  console.log(`   ✅ ${luxType.name} (R$ ${luxType.basePrice})`);
-  console.log(`   ✅ ${masterType.name} (R$ ${masterType.basePrice})\n`);
+  console.log(`   ✅ ${stdType.name} (R$ ${stdType.basePrice})\n`);
 
   // ----------------------------------------------------------
   // ROOMS
@@ -208,11 +179,11 @@ async function main() {
     { number: '108', name: 'Juazeiro', floor: 1, typeId: stdType.id },
     { number: '109', name: 'Sucupira', floor: 1, typeId: stdType.id },
     { number: '110', name: 'Várzea', floor: 1, typeId: stdType.id },
-    { number: '111', name: 'Bento Simões', floor: 1, typeId: luxType.id },
-    { number: '112', name: 'Sobradinho', floor: 1, typeId: luxType.id },
-    { number: '113', name: 'Brotas', floor: 1, typeId: luxType.id },
-    { number: '114', name: 'Jardin', floor: 1, typeId: masterType.id },
-    { number: '115', name: 'Baixinha', floor: 1, typeId: masterType.id },
+    { number: '111', name: 'Bento Simões', floor: 1, typeId: stdType.id },
+    { number: '112', name: 'Sobradinho', floor: 1, typeId: stdType.id },
+    { number: '113', name: 'Brotas', floor: 1, typeId: stdType.id },
+    { number: '114', name: 'Jardin', floor: 1, typeId: stdType.id },
+    { number: '115', name: 'Baixinha', floor: 1, typeId: stdType.id },
   ];
   for (const r of realRooms) {
     const room = await prisma.room.create({
@@ -539,21 +510,21 @@ async function main() {
   const inHouseEnd = new Date(today);
   inHouseEnd.setDate(inHouseEnd.getDate() + 1);
 
-  // 1. Reserva CONFIRMED (chega na próxima semana) — Pedro no Luxo
+  // 1. Reserva CONFIRMED (chega na próxima semana) — Pedro
   const reservation1 = await prisma.reservation.create({
     data: {
       propertyId: property.id,
       code: 'RES-2026-00001',
       primaryGuestId: guests[1]!.id, // Pedro
-      roomTypeId: luxType.id,
+      roomTypeId: stdType.id,
       checkInDate: nextWeek,
       checkOutDate: tenDaysOut,
       nights: 3,
       adults: 2,
       children: 0,
-      totalAmount: dec(1350),
-      dailyRate: dec(450),
-      paidAmount: dec(405), // 30% pago
+      totalAmount: dec(840),
+      dailyRate: dec(280),
+      paidAmount: dec(252), // 30% pago
       billingMode: 'DEPOSIT_BALANCE',
       depositPercent: 30,
       source: 'DIRECT',
