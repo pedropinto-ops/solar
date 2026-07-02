@@ -28,10 +28,10 @@ export default function MyCleaningPage() {
   return (
     <AppShell>
       <PageHeader
-        title="Minha limpeza"
+        title="Limpeza"
         subtitle={
           tasks
-            ? `${tasks.length} tarefa${tasks.length !== 1 ? 's' : ''} atribuída${tasks.length !== 1 ? 's' : ''}`
+            ? `${tasks.length} quarto${tasks.length !== 1 ? 's' : ''} para limpar`
             : undefined
         }
       />

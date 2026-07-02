@@ -30,7 +30,7 @@ const NAV_ITEMS: NavItem[] = [
   },
   {
     href: '/minha-limpeza',
-    label: 'Minhas tarefas',
+    label: 'Limpeza',
     icon: 'sparkles',
     roles: ['HOUSEKEEPER'],
   },

@@ -2,7 +2,6 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
-  ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
 import { AuditService } from '../../common/audit/audit.service.js';
@@ -64,17 +63,19 @@ export class HousekeepingService {
   }
 
   /**
-   * Tarefas atribuídas ao usuário logado (camareira).
+   * Tarefas de limpeza abertas da pousada (sem atribuição — qualquer
+   * funcionário pode limpar qualquer quarto). userId mantido por
+   * compatibilidade de assinatura.
    */
-  async listMyTasks(propertyId: string, userId: string) {
+  async listMyTasks(propertyId: string, _userId: string) {
     return this.prisma.cleaningTask.findMany({
       where: {
         propertyId,
-        assignedToId: userId,
         status: { in: ['PENDING', 'IN_PROGRESS', 'AWAITING_INSPECTION', 'REJECTED'] },
       },
       include: {
         room: { include: { roomType: { select: { name: true } } } },
+        assignedTo: { select: { id: true, name: true } },
       },
       orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }],
     });
@@ -309,19 +310,8 @@ export class HousekeepingService {
         });
       }
 
-      // Camareira só pode iniciar tarefas atribuídas a ela
-      // (supervisor pode iniciar qualquer uma, pra agilizar)
-      const user = await tx.user.findUnique({ where: { id: userId } });
-      if (
-        user?.role === 'HOUSEKEEPER' &&
-        task.assignedToId !== userId
-      ) {
-        throw new ForbiddenException({
-          errorCode: 'FORBIDDEN',
-          title: 'Tarefa não está atribuída a você',
-        });
-      }
-
+      // Sem atribuição: qualquer funcionário pode iniciar qualquer tarefa.
+      // Quem inicia fica registrado como responsável (via assignedToId abaixo).
       if (task.status === 'IN_PROGRESS') {
         return task; // idempotente
       }

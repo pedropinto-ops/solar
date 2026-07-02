@@ -8,8 +8,6 @@ import { StatusPill } from '@/components/ui/status-pill';
 import {
   useCleaningTasks,
   useHousekeepingDashboard,
-  useStaff,
-  useAssignCleaning,
   useApproveCleaning,
   useRejectCleaning,
   type CleaningTask,
@@ -35,7 +33,6 @@ export default function HousekeepingPage() {
 
   const { data: dash } = useHousekeepingDashboard();
   const { data: tasks, isLoading } = useCleaningTasks({ status: currentTab.status });
-  const { data: staffList } = useStaff('HOUSEKEEPER');
 
   return (
     <AppShell>
@@ -95,12 +92,7 @@ export default function HousekeepingPage() {
         ) : (
           <div className="space-y-2">
             {(tasks ?? []).map((task) => (
-              <TaskRow
-                key={task.id}
-                task={task}
-                staff={staffList ?? []}
-                onError={setError}
-              />
+              <TaskRow key={task.id} task={task} onError={setError} />
             ))}
           </div>
         )}
@@ -111,18 +103,13 @@ export default function HousekeepingPage() {
 
 function TaskRow({
   task,
-  staff,
   onError,
 }: {
   task: CleaningTask;
-  staff: Array<{ id: string; name: string }>;
   onError: (e: string | null) => void;
 }) {
-  const assign = useAssignCleaning();
   const approve = useApproveCleaning();
   const reject = useRejectCleaning();
-  const [assigning, setAssigning] = useState(false);
-  const [selectedStaff, setSelectedStaff] = useState('');
 
   async function run<T>(fn: () => Promise<T>) {
     onError(null);
@@ -152,7 +139,7 @@ function TaskRow({
           <div className="mt-2 text-xs text-ink-500 flex gap-4 flex-wrap">
             <span>Criada {fmtDateTime(task.createdAt)}</span>
             {task.assignedTo && (
-              <span>Camareira: <span className="text-ink-700">{task.assignedTo.name}</span></span>
+              <span>Feito por: <span className="text-ink-700">{task.assignedTo.name}</span></span>
             )}
             {task.durationMinutes != null && <span>Tempo: {task.durationMinutes} min</span>}
           </div>
@@ -166,11 +153,6 @@ function TaskRow({
 
         {/* Ações */}
         <div className="flex gap-2 shrink-0">
-          {task.status === 'PENDING' && !assigning && (
-            <Button variant="secondary" size="sm" onClick={() => setAssigning(true)}>
-              Atribuir
-            </Button>
-          )}
           {task.status === 'AWAITING_INSPECTION' && (
             <>
               <Button
@@ -195,36 +177,6 @@ function TaskRow({
         </div>
       </div>
 
-      {assigning && (
-        <div className="mt-3 pt-3 border-t border-sand-100 flex flex-col sm:flex-row gap-2">
-          <select
-            value={selectedStaff}
-            onChange={(e) => setSelectedStaff(e.target.value)}
-            className="text-sm rounded-lg border border-sand-200 px-3 flex-1 bg-cream min-h-touch-sm"
-          >
-            <option value="">Selecione camareira…</option>
-            {staff.map((s) => (
-              <option key={s.id} value={s.id}>{s.name}</option>
-            ))}
-          </select>
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              onClick={() =>
-                run(() =>
-                  assign.mutateAsync({ taskId: task.id, userId: selectedStaff }),
-                ).then(() => setAssigning(false))
-              }
-              disabled={!selectedStaff}
-            >
-              Atribuir
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => setAssigning(false)}>
-              Cancelar
-            </Button>
-          </div>
-        </div>
-      )}
     </Card>
   );
 }
