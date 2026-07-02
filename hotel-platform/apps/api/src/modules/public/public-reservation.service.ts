@@ -61,10 +61,13 @@ export class PublicReservationService {
         consentMarketing: boolean;
       };
       guestNotes?: string;
+      contractAccepted: boolean;
+      contractVersion: string;
       idempotencyKey: string;
     };
+    ip?: string;
   }) {
-    const { propertyId, propertySlug, data } = params;
+    const { propertyId, propertySlug, ip, data } = params;
 
     // Idempotência
     const cacheKey = `${propertySlug}:${data.idempotencyKey}`;
@@ -200,9 +203,8 @@ export class PublicReservationService {
       // 5. Gera código
       const code = await generateReservationCode(tx, propertyId);
 
-      // 6. Cria reserva PENDING com hold
-      const holdExpiresAt = new Date(Date.now() + this.HOLD_MINUTES * 60 * 1000);
-
+      // 6. Cria a solicitação de reserva (PENDING, sem pagamento online).
+      //    Sem holdExpiresAt: não é cancelada pelo cron; aguarda confirmação do hotel.
       let reservation;
       try {
         reservation = await tx.reservation.create({
@@ -224,8 +226,12 @@ export class PublicReservationService {
             depositPercent: 30,
             source: 'DIRECT',
             status: 'PENDING',
-            holdExpiresAt,
+            holdExpiresAt: null,
             guestNotes: data.guestNotes,
+            contractAccepted: true,
+            contractAcceptedAt: new Date(),
+            contractVersion: data.contractVersion,
+            contractAcceptedIp: ip ?? null,
             guests: { create: { guestId: guest.id, isPrimary: true } },
           },
         });
@@ -259,45 +265,17 @@ export class PublicReservationService {
       return { reservation, guest, depositAmount: totalAmount.mul(30).div(100).toNumber() };
     });
 
-    // 7. FORA da transação: cria cobrança Pix via Asaas
-    //    Se falhar, a reserva continua PENDING e o cron eventualmente cancela.
-    //    A recepção pode tentar criar cobrança manualmente também.
-    let payment = null;
-    try {
-      payment = await this.paymentService.createPixCharge({
-        propertyId,
-        userId: null,
-        reservationId: result.reservation.id,
-        amount: result.depositAmount,
-        description: `Sinal reserva ${result.reservation.code}`,
-      });
-    } catch (err: any) {
-      this.logger.error(
-        `Falha ao criar cobrança Pix para ${result.reservation.id}: ${err.message}`,
-      );
-      // Não propaga: cliente recebe reserva PENDING e pode pagar depois
-      // Se Asaas estiver fora, o cron de hold cancela em 30 min
-    }
-
+    // 7. Sem pagamento online nesta fase: a reserva é uma SOLICITAÇÃO com
+    //    contrato aceito. A recepção valida e combina o pagamento à parte.
     const responseBody = {
       reservation: {
         id: result.reservation.id,
         code: result.reservation.code,
         status: result.reservation.status,
-        holdExpiresAt: result.reservation.holdExpiresAt,
         totalAmount: result.reservation.totalAmount.toNumber(),
         depositAmount: result.depositAmount,
       },
-      payment: payment
-        ? {
-            id: payment.id,
-            method: payment.method,
-            amount: payment.amount.toNumber(),
-            pixQrCode: payment.pixQrCode,
-            pixCopyPaste: payment.pixCopyPaste,
-            pixExpiresAt: payment.pixExpiresAt,
-          }
-        : null,
+      payment: null,
     };
 
     // Cacheia idempotência por 24h

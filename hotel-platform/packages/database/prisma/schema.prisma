@@ -431,6 +431,12 @@ model Reservation {
   // ---- HOLD (para link público de reserva) ----
   holdExpiresAt       DateTime?                     // bloqueia disponibilidade por 10 min enquanto paga
 
+  // ---- ACEITE DE CONTRATO (reserva pública) ----
+  contractAccepted    Boolean  @default(false)
+  contractAcceptedAt  DateTime?
+  contractVersion     String?
+  contractAcceptedIp  String?
+
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 

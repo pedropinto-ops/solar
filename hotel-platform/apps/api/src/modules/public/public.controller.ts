@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, UsePipes } from '@nestjs/common';
+import { Body, Controller, Get, Ip, Param, Post, Query, UsePipes } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { PropertyService } from '../property/property.service.js';
 import { RoomService } from '../room/room.service.js';
@@ -76,6 +76,7 @@ export class PublicController {
   @Post('property/:slug/reservations')
   async createReservation(
     @Param('slug') slug: string,
+    @Ip() ip: string,
     @Body(new ZodValidationPipe(createPublicReservationSchema))
     dto: CreatePublicReservationSchemaInput,
   ) {
@@ -83,6 +84,7 @@ export class PublicController {
     return this.publicReservation.createReservation({
       propertyId: property.id,
       propertySlug: slug,
+      ip,
       data: dto,
     });
   }

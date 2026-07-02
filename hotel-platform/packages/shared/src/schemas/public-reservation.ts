@@ -17,6 +17,14 @@ export const createPublicReservationSchema = z
     guest: createGuestPublicSchema,
     guestNotes: z.string().max(500).optional(),
     /**
+     * Aceite eletrônico do contrato de hospedagem (obrigatório).
+     * contractAccepted precisa ser true; contractVersion identifica o texto aceito.
+     */
+    contractAccepted: z.literal(true, {
+      errorMap: () => ({ message: 'É necessário aceitar o contrato de hospedagem' }),
+    }),
+    contractVersion: z.string().min(1).max(100),
+    /**
      * Idempotency key (UUID v4) — gerada no frontend.
      * Mesma key + 24h = mesma resposta. Evita duplicação por duplo-clique.
      */
