@@ -302,6 +302,7 @@ export interface CleaningTask {
   room: {
     id: string;
     number: string;
+    name: string | null;
     floor: number | null;
     status: string;
     roomType: { name: string };
@@ -376,8 +377,11 @@ export function useStartCleaning() {
 export function useCompleteCleaning() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (taskId: string) =>
-      apiFetch(`/cleaning-tasks/${taskId}/complete`, { method: 'POST', body: {} }),
+    mutationFn: (params: { taskId: string; checklist?: unknown }) =>
+      apiFetch(`/cleaning-tasks/${params.taskId}/complete`, {
+        method: 'POST',
+        body: { checklist: params.checklist },
+      }),
     onSuccess: () => invalidateHk(qc),
   });
 }

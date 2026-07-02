@@ -374,8 +374,13 @@ export class HousekeepingService {
     });
   }
 
-  async complete(params: { propertyId: string; userId: string; taskId: string }) {
-    const { propertyId, userId, taskId } = params;
+  async complete(params: {
+    propertyId: string;
+    userId: string;
+    taskId: string;
+    checklist?: unknown;
+  }) {
+    const { propertyId, userId, taskId, checklist } = params;
 
     return this.prisma.$transaction(async (tx) => {
       const task = await tx.cleaningTask.findFirst({
@@ -414,6 +419,9 @@ export class HousekeepingService {
           status: newStatus,
           finishedAt: now,
           durationMinutes,
+          ...(checklist !== undefined
+            ? { checklist: checklist as Prisma.InputJsonValue }
+            : {}),
           ...(skipInspection
             ? { inspectedAt: now, inspectedById: userId }
             : {}),

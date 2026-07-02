@@ -15,6 +15,7 @@ import {
 } from '@/lib/hooks';
 import { ApiError } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
+import { ENXOVAL_MENSAGEM, FRIGOBAR_ITENS } from '@/lib/cleaning-checklist';
 
 export default function MyCleaningPage() {
   const { data: tasks, isLoading } = useMyCleaningTasks();
@@ -101,6 +102,30 @@ function TaskCard({
   const issueMutation = useReportCleaningIssue();
   const [showIssue, setShowIssue] = useState(false);
   const [issueText, setIssueText] = useState('');
+  const [showChecklist, setShowChecklist] = useState(false);
+  const [checklist, setChecklist] = useState({
+    camaArrumada: false,
+    banheiroLimpo: false,
+    pisoLimpo: false,
+    enxovalTrocado: false,
+    frigobarReposto: false,
+    observacoes: '',
+  });
+  const [frigobar, setFrigobar] = useState<Record<string, boolean>>({});
+
+  function toggle(key: keyof typeof checklist) {
+    setChecklist((c) => ({ ...c, [key]: !c[key] }));
+  }
+
+  async function submitChecklist() {
+    await run(() =>
+      completeMutation.mutateAsync({
+        taskId: task.id,
+        checklist: { ...checklist, frigobarItens: frigobar },
+      }),
+    );
+    setShowChecklist(false);
+  }
 
   async function run<T>(fn: () => Promise<T>) {
     onError(null);
@@ -172,7 +197,7 @@ function TaskCard({
                   fullWidth
                   size="lg"
                   className="bg-teal-500 hover:bg-teal-700"
-                  onClick={() => run(() => completeMutation.mutateAsync(task.id))}
+                  onClick={() => setShowChecklist(true)}
                 >
                   ✓ Concluir limpeza
                 </Button>
@@ -224,6 +249,103 @@ function TaskCard({
           </Button>
         </div>
       </Sheet>
+
+      <Sheet
+        open={showChecklist}
+        onClose={() => setShowChecklist(false)}
+        title={`Checklist — quarto ${task.room.name ?? task.room.number}`}
+      >
+        <div className="space-y-2.5">
+          <CheckItem label="A cama está arrumada?" checked={checklist.camaArrumada} onToggle={() => toggle('camaArrumada')} />
+          <CheckItem label="O banheiro foi limpo?" checked={checklist.banheiroLimpo} onToggle={() => toggle('banheiroLimpo')} />
+          <CheckItem label="O piso foi limpo?" checked={checklist.pisoLimpo} onToggle={() => toggle('pisoLimpo')} />
+          <CheckItem
+            label="Lençóis e toalhas trocados?"
+            checked={checklist.enxovalTrocado}
+            onToggle={() => toggle('enxovalTrocado')}
+            note={ENXOVAL_MENSAGEM}
+          />
+
+          <div>
+            <CheckItem label="Frigobar foi reposto?" checked={checklist.frigobarReposto} onToggle={() => toggle('frigobarReposto')} />
+            {checklist.frigobarReposto && (
+              <div className="mt-2 ml-3 pl-3 border-l-2 border-sand-200 space-y-1.5">
+                <div className="text-[11px] text-ink-500 mb-1">Marque o que foi reposto:</div>
+                {FRIGOBAR_ITENS.map((item) => (
+                  <CheckItem
+                    key={item}
+                    label={item}
+                    small
+                    checked={!!frigobar[item]}
+                    onToggle={() => setFrigobar((f) => ({ ...f, [item]: !f[item] }))}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          <textarea
+            value={checklist.observacoes}
+            onChange={(e) => setChecklist((c) => ({ ...c, observacoes: e.target.value }))}
+            placeholder="Observações (opcional)"
+            rows={2}
+            className="w-full text-sm rounded-lg border border-sand-200 px-3 py-2 bg-cream"
+          />
+
+          <Button
+            fullWidth
+            size="lg"
+            className="bg-teal-500 hover:bg-teal-700"
+            onClick={submitChecklist}
+            disabled={completeMutation.isPending}
+          >
+            Confirmar conclusão
+          </Button>
+        </div>
+      </Sheet>
     </>
+  );
+}
+
+function CheckItem({
+  label,
+  checked,
+  onToggle,
+  note,
+  small,
+}: {
+  label: string;
+  checked: boolean;
+  onToggle: () => void;
+  note?: string;
+  small?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className={cn(
+        'w-full flex items-start gap-3 rounded-lg border text-left transition-colors',
+        small ? 'p-2' : 'p-3 min-h-touch-md',
+        checked ? 'bg-teal-50 border-teal-500' : 'bg-cream border-sand-200',
+      )}
+    >
+      <span
+        className={cn(
+          'mt-0.5 w-5 h-5 shrink-0 rounded-md border flex items-center justify-center',
+          checked ? 'bg-teal-900 border-teal-900 text-cream' : 'border-ink-300',
+        )}
+      >
+        {checked && (
+          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M20 6 9 17l-5-5" />
+          </svg>
+        )}
+      </span>
+      <span className="flex-1">
+        <span className={cn('block text-ink-950', small ? 'text-sm' : 'text-sm font-medium')}>{label}</span>
+        {note && <span className="block text-[11px] text-ink-500 mt-0.5">{note}</span>}
+      </span>
+    </button>
   );
 }

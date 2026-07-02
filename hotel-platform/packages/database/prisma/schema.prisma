@@ -610,6 +610,7 @@ model CleaningTask {
   issuesReported  String?
   photos          String[]                           // fotos de problemas (R2)
   notes           String?
+  checklist       Json?                              // respostas do checklist da camareira
 
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt

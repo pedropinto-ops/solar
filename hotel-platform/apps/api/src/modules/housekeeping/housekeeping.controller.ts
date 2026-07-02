@@ -23,7 +23,9 @@ import {
   reportIssueSchema,
   rejectCleaningSchema,
   updateRoomStatusSchema,
+  completeCleaningSchema,
   type CreateCleaningTaskInput,
+  type CompleteCleaningInput,
 } from '@hotel/shared/schemas';
 
 @Controller('cleaning-tasks')
@@ -164,11 +166,16 @@ export class HousekeepingController {
   @Post(':id/complete')
   @HttpCode(200)
   @Roles('ADMIN', 'MANAGER', 'HOUSEKEEPING_SUPERVISOR', 'HOUSEKEEPER')
-  async complete(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+  async complete(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(completeCleaningSchema)) dto: CompleteCleaningInput,
+  ) {
     return this.housekeeping.complete({
       propertyId: user.propertyId,
       userId: user.userId,
       taskId: id,
+      checklist: dto.checklist,
     });
   }
 
