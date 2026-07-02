@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Ip, Param, Post, Query, UsePipes } from '@nestjs/common';
+import { Body, Controller, Get, Ip, Param, Post, Query } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { PropertyService } from '../property/property.service.js';
 import { RoomService } from '../room/room.service.js';
@@ -40,8 +40,10 @@ export class PublicController {
   }
 
   @Get('property/:slug/availability')
-  @UsePipes(new ZodValidationPipe(availabilityQuerySchema))
-  async availability(@Param('slug') slug: string, @Query() query: AvailabilityQuery) {
+  async availability(
+    @Param('slug') slug: string,
+    @Query(new ZodValidationPipe(availabilityQuerySchema)) query: AvailabilityQuery,
+  ) {
     const property = await this.propertyService.findBySlug(slug);
     const nights = Math.round(
       (query.checkOutDate.getTime() - query.checkInDate.getTime()) /
