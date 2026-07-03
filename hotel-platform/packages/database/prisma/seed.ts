@@ -148,7 +148,7 @@ async function main() {
       propertyId: property.id,
       name: 'Quarto Standard',
       description: 'Quarto confortável com ar-condicionado, TV e frigobar.',
-      basePrice: dec(280),
+      basePrice: dec(150),
       maxOccupancy: 2,
       maxAdults: 2,
       maxChildren: 1,
