@@ -10,6 +10,7 @@ import {
 import { SkipThrottle } from '@nestjs/throttler';
 import { ConfigService } from '@nestjs/config';
 import { PaymentService } from './payment.service.js';
+import { Public } from '../auth/auth.guards.js';
 
 interface AsaasWebhookPayload {
   event?: string;
@@ -30,6 +31,7 @@ interface AsaasWebhookPayload {
  * já PAID retornando sem efeito.
  */
 @Controller('webhooks')
+@Public()
 @SkipThrottle()
 export class WebhookController {
   private readonly logger = new Logger(WebhookController.name);

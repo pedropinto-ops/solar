@@ -6,6 +6,7 @@ import { PrismaModule } from './common/prisma/prisma.module.js';
 import { AuditModule } from './common/audit/audit.module.js';
 import { SchedulingModule } from './common/scheduling/scheduling.module.js';
 import { HealthController } from './common/health/health.controller.js';
+import { JwtAuthGuard, RolesGuard } from './modules/auth/auth.guards.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { PropertyModule } from './modules/property/property.module.js';
 import { RoomModule } from './modules/room/room.module.js';
@@ -58,9 +59,18 @@ import { StockModule } from './modules/stock/stock.module.js';
   ],
   controllers: [HealthController],
   providers: [
+    // Ordem importa: Jwt (autentica, popula user) antes do Roles (checa perfil).
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: RolesGuard,
     },
   ],
 })

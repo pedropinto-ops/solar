@@ -10,10 +10,31 @@ import { Reflector } from '@nestjs/core';
 import { AuthGuard } from '@nestjs/passport';
 
 /**
- * Guard que valida JWT no header Authorization.
+ * Marca uma rota como pública (sem exigir JWT). Necessário porque o
+ * JwtAuthGuard é global.
+ * Uso: @Public()
+ */
+export const IS_PUBLIC_KEY = 'isPublic';
+export const Public = () => SetMetadata(IS_PUBLIC_KEY, true);
+
+/**
+ * Guard que valida JWT no header Authorization. Global — pula rotas @Public.
  */
 @Injectable()
-export class JwtAuthGuard extends AuthGuard('jwt') {}
+export class JwtAuthGuard extends AuthGuard('jwt') {
+  constructor(private readonly reflector: Reflector) {
+    super();
+  }
+
+  override canActivate(context: ExecutionContext) {
+    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (isPublic) return true;
+    return super.canActivate(context);
+  }
+}
 
 /**
  * Roles decorator.

@@ -1,8 +1,10 @@
 import { Controller, Get } from '@nestjs/common';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { Public } from '../../modules/auth/auth.guards.js';
 
 @Controller('health')
+@Public() // não exige JWT (Railway healthcheck)
 @SkipThrottle() // health check não conta no rate limit
 export class HealthController {
   constructor(private readonly prisma: PrismaService) {}

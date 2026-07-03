@@ -4,6 +4,7 @@ import { PropertyService } from '../property/property.service.js';
 import { RoomService } from '../room/room.service.js';
 import { PublicReservationService } from './public-reservation.service.js';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe.js';
+import { Public } from '../auth/auth.guards.js';
 import {
   availabilityQuerySchema,
   createPublicReservationSchema,
@@ -16,6 +17,7 @@ import {
  * pública. Cobre o Fluxo 1 completo (documento critical-flows.md).
  */
 @Controller('public')
+@Public()
 export class PublicController {
   constructor(
     private readonly propertyService: PropertyService,
