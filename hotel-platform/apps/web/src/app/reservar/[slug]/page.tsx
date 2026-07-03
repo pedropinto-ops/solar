@@ -230,13 +230,34 @@ export default function PublicReservePage({
 
             {availability.data && (
               <div className="pt-4 border-t border-sand-200 space-y-3">
-                <div className="text-sm text-ink-500">
-                  {availability.data.nights} noite{availability.data.nights > 1 ? 's' : ''} ·{' '}
-                  {availability.data.roomTypes.filter((rt) => !rt.soldOut).length} categoria(s) disponível(is)
-                </div>
-                {availability.data.roomTypes.map((rt) => (
-                  <RoomTypeCard key={rt.id} roomType={rt} onChoose={() => chooseRoomType(rt.id)} />
-                ))}
+                {(() => {
+                  const disponiveis = availability.data.roomTypes
+                    .filter((rt) => !rt.soldOut)
+                    .reduce((soma, rt) => soma + rt.available, 0);
+                  const noites = availability.data.nights;
+                  return (
+                    <div className="text-sm text-ink-500">
+                      {noites} noite{noites > 1 ? 's' : ''} ·{' '}
+                      {disponiveis > 0
+                        ? `${disponiveis} quarto${disponiveis > 1 ? 's' : ''} disponíve${disponiveis > 1 ? 'is' : 'l'}`
+                        : 'sem quartos para esta busca'}
+                    </div>
+                  );
+                })()}
+
+                {availability.data.roomTypes.length === 0 ? (
+                  <div className="rounded-xl border border-sand-200 bg-sand-50 p-4 text-sm text-ink-500">
+                    Não encontramos quartos para{' '}
+                    <strong className="text-ink-950">
+                      {search.adults + search.children} hóspede{search.adults + search.children > 1 ? 's' : ''}
+                    </strong>{' '}
+                    nessas datas. Tente reduzir o número de pessoas ou falar com a recepção.
+                  </div>
+                ) : (
+                  availability.data.roomTypes.map((rt) => (
+                    <RoomTypeCard key={rt.id} roomType={rt} onChoose={() => chooseRoomType(rt.id)} />
+                  ))
+                )}
               </div>
             )}
           </div>
