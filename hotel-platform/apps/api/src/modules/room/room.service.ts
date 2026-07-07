@@ -143,4 +143,120 @@ export class RoomService {
 
     return rooms;
   }
+
+  /**
+   * Painel de recepção — situação de TODOS os quartos num relance.
+   *
+   * Ocupação é derivada da reserva CHECKED_IN (fonte confiável), não só do
+   * campo Room.status — evita divergência se o status ficar defasado. O
+   * status do quarto ainda define os estados de governança (limpeza etc.).
+   */
+  async board(propertyId: string) {
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+
+    const [rooms, inHouse, arrivals] = await Promise.all([
+      this.prisma.room.findMany({
+        where: { propertyId, active: true },
+        include: { roomType: { select: { name: true } } },
+        orderBy: [{ floor: 'asc' }, { number: 'asc' }],
+      }),
+      this.prisma.reservation.findMany({
+        where: { propertyId, status: 'CHECKED_IN', roomId: { not: null } },
+        select: {
+          roomId: true,
+          checkOutDate: true,
+          adults: true,
+          children: true,
+          primaryGuest: { select: { fullName: true } },
+        },
+      }),
+      this.prisma.reservation.findMany({
+        where: {
+          propertyId,
+          status: 'CONFIRMED',
+          roomId: { not: null },
+          checkInDate: { gte: today, lt: tomorrow },
+        },
+        select: {
+          roomId: true,
+          primaryGuest: { select: { fullName: true } },
+        },
+      }),
+    ]);
+
+    const inHouseByRoom = new Map(inHouse.map((r) => [r.roomId, r]));
+    const arrivalByRoom = new Map(arrivals.map((r) => [r.roomId, r]));
+    const todayIdx = Math.floor(today.getTime() / 86_400_000);
+
+    const items = rooms.map((room) => {
+      const occ = inHouseByRoom.get(room.id);
+      const arr = arrivalByRoom.get(room.id);
+
+      let state:
+        | 'OCCUPIED'
+        | 'DEPARTING'
+        | 'ARRIVING'
+        | 'FREE'
+        | 'CLEANING'
+        | 'BLOCKED';
+      let occupant: {
+        guestName: string;
+        checkOutDate: string;
+        guests: number;
+        departingToday: boolean;
+      } | null = null;
+
+      if (occ) {
+        const departing =
+          Math.floor(occ.checkOutDate.getTime() / 86_400_000) <= todayIdx;
+        state = departing ? 'DEPARTING' : 'OCCUPIED';
+        occupant = {
+          guestName: occ.primaryGuest?.fullName ?? 'Hóspede',
+          checkOutDate: occ.checkOutDate.toISOString().slice(0, 10),
+          guests: occ.adults + occ.children,
+          departingToday: departing,
+        };
+      } else if (['DIRTY', 'CLEANING', 'INSPECTION'].includes(room.status)) {
+        state = 'CLEANING';
+      } else if (
+        ['MAINTENANCE', 'BLOCKED', 'OUT_OF_ORDER'].includes(room.status)
+      ) {
+        state = 'BLOCKED';
+      } else if (arr) {
+        state = 'ARRIVING';
+      } else {
+        state = 'FREE';
+      }
+
+      return {
+        id: room.id,
+        number: room.number,
+        name: room.name,
+        floor: room.floor,
+        roomType: room.roomType.name,
+        status: room.status,
+        state,
+        occupant,
+        arrivalGuest:
+          state === 'ARRIVING' ? arr?.primaryGuest?.fullName ?? 'Reserva' : null,
+      };
+    });
+
+    const summary = {
+      total: items.length,
+      occupied: items.filter(
+        (i) => i.state === 'OCCUPIED' || i.state === 'DEPARTING',
+      ).length,
+      departingToday: items.filter((i) => i.state === 'DEPARTING').length,
+      arrivingToday: items.filter((i) => i.state === 'ARRIVING').length,
+      free: items.filter((i) => i.state === 'FREE').length,
+      cleaning: items.filter((i) => i.state === 'CLEANING').length,
+      blocked: items.filter((i) => i.state === 'BLOCKED').length,
+    };
+
+    return { summary, rooms: items };
+  }
 }

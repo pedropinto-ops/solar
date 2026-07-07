@@ -33,6 +33,12 @@ export class RoomController {
     return this.roomService.listAll(user.propertyId);
   }
 
+  /** Painel de recepção — situação de todos os quartos (ocupados/livres/...). */
+  @Get('board')
+  async board(@CurrentUser() user: AuthenticatedUser) {
+    return this.roomService.board(user.propertyId);
+  }
+
   @Get('types')
   async listTypes(@CurrentUser() user: AuthenticatedUser) {
     return this.roomTypeService.list(user.propertyId);

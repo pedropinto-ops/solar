@@ -19,6 +19,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { href: '/dashboard', label: 'Painel', icon: 'home' },
+  { href: '/painel', label: 'Quartos ao vivo', icon: 'grid', roles: ['ADMIN', 'MANAGER', 'RECEPTION'] },
   { href: '/agenda', label: 'Agenda', icon: 'calendar', roles: ['ADMIN', 'MANAGER', 'RECEPTION'] },
   { href: '/quartos', label: 'Quartos', icon: 'bed' },
   { href: '/hospedes', label: 'Hóspedes', icon: 'users', roles: ['ADMIN', 'MANAGER', 'RECEPTION'] },
@@ -101,6 +102,15 @@ function Icon({ name, className }: { name: string; className?: string }) {
         <svg className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
           <path d="M21 8l-9-5-9 5v8l9 5 9-5z" />
           <path d="M3 8l9 5 9-5" /><line x1="12" y1="13" x2="12" y2="21" />
+        </svg>
+      );
+    case 'grid':
+      return (
+        <svg className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="3" width="7" height="7" rx="1" />
+          <rect x="14" y="3" width="7" height="7" rx="1" />
+          <rect x="3" y="14" width="7" height="7" rx="1" />
+          <rect x="14" y="14" width="7" height="7" rx="1" />
         </svg>
       );
     case 'chart':

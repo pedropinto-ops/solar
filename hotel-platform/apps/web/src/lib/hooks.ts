@@ -639,3 +639,52 @@ export function useReportSummary(start: string, end: string) {
     enabled: Boolean(start && end),
   });
 }
+
+// =========================================
+//  Painel de quartos (recepção)
+// =========================================
+
+export type RoomBoardState =
+  | 'OCCUPIED'
+  | 'DEPARTING'
+  | 'ARRIVING'
+  | 'FREE'
+  | 'CLEANING'
+  | 'BLOCKED';
+
+export interface RoomBoard {
+  summary: {
+    total: number;
+    occupied: number;
+    departingToday: number;
+    arrivingToday: number;
+    free: number;
+    cleaning: number;
+    blocked: number;
+  };
+  rooms: Array<{
+    id: string;
+    number: string;
+    name: string | null;
+    floor: number | null;
+    roomType: string;
+    status: string;
+    state: RoomBoardState;
+    occupant: {
+      guestName: string;
+      checkOutDate: string;
+      guests: number;
+      departingToday: boolean;
+    } | null;
+    arrivalGuest: string | null;
+  }>;
+}
+
+export function useRoomBoard() {
+  return useQuery({
+    queryKey: ['rooms', 'board'],
+    queryFn: () => apiFetch<RoomBoard>('/rooms/board'),
+    refetchInterval: 30_000, // wallboard ao vivo
+    refetchOnWindowFocus: true,
+  });
+}
