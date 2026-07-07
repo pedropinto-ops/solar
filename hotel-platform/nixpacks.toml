@@ -9,7 +9,11 @@ cmds = [
   # Restaura permissão de execução dos shims (.bin) — camada de cache do
   # builder às vezes perde o bit de execução ("prisma: Permission denied")
   "find . -path '*/node_modules/.bin/*' -exec chmod +x {} + 2>/dev/null || true",
-  "cd packages/database && node node_modules/prisma/build/index.js generate",
+  # Gera o Prisma Client via resolução do pnpm (o binário do prisma pode não
+  # estar num caminho fixo em packages/database/node_modules — pnpm às vezes
+  # o desloca, causando "Cannot find module" de forma flaky). O `exec` acha
+  # o prisma pelo grafo de deps do pacote, e o chmod acima cobre o exec-bit.
+  "pnpm --filter @hotel/database exec prisma generate",
   "pnpm --filter @hotel/shared build",
   "pnpm --filter @hotel/database build",
   "pnpm --filter @hotel/api build"
