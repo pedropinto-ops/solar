@@ -18,6 +18,7 @@ import { PaymentModule } from './modules/payment/payment.module.js';
 import { PublicModule } from './modules/public/public.module.js';
 import { StockModule } from './modules/stock/stock.module.js';
 import { ReportModule } from './modules/report/report.module.js';
+import { EmailModule } from './modules/email/email.module.js';
 
 @Module({
   imports: [
@@ -46,6 +47,7 @@ import { ReportModule } from './modules/report/report.module.js';
     ]),
     PrismaModule,
     AuditModule,
+    EmailModule,
     SchedulingModule,
     AuthModule,
     PropertyModule,

@@ -8,6 +8,7 @@ import {
 import { PrismaService } from '../../common/prisma/prisma.service.js';
 import { AuditService } from '../../common/audit/audit.service.js';
 import { PaymentService } from '../payment/payment.service.js';
+import { EmailService } from '../email/email.service.js';
 import { generateReservationCode } from '../../common/utils/reservation-code.js';
 import type { Prisma } from '@prisma/client';
 import { Prisma as P } from '@prisma/client';
@@ -39,6 +40,7 @@ export class PublicReservationService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly paymentService: PaymentService,
+    private readonly email: EmailService,
   ) {}
 
   async createReservation(params: {
@@ -277,6 +279,15 @@ export class PublicReservationService {
       },
       payment: null,
     };
+
+    // E-mail de "solicitação recebida" — dispara e esquece. O EmailService
+    // engole qualquer erro internamente, mas o void + catch garante que uma
+    // rejeição jamais escape para o fluxo da reserva.
+    void this.email
+      .sendReservationReceived(result.reservation.id)
+      .catch((err) =>
+        this.logger.error(`Falha ao enviar e-mail de reserva: ${err?.message}`),
+      );
 
     // Cacheia idempotência por 24h
     this.idempotencyCache.set(cacheKey, {
