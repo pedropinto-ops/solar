@@ -40,6 +40,12 @@ const NAV_ITEMS: NavItem[] = [
     icon: 'box',
     roles: ['ADMIN', 'MANAGER', 'HOUSEKEEPING_SUPERVISOR'],
   },
+  {
+    href: '/relatorios',
+    label: 'Relatórios',
+    icon: 'chart',
+    roles: ['ADMIN', 'MANAGER'],
+  },
 ];
 
 // Ícones inline (sem libs externas)
@@ -95,6 +101,15 @@ function Icon({ name, className }: { name: string; className?: string }) {
         <svg className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
           <path d="M21 8l-9-5-9 5v8l9 5 9-5z" />
           <path d="M3 8l9 5 9-5" /><line x1="12" y1="13" x2="12" y2="21" />
+        </svg>
+      );
+    case 'chart':
+      return (
+        <svg className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <line x1="3" y1="21" x2="21" y2="21" />
+          <rect x="5" y="11" width="3.5" height="7" />
+          <rect x="10.25" y="7" width="3.5" height="11" />
+          <rect x="15.5" y="13" width="3.5" height="5" />
         </svg>
       );
     case 'logout':

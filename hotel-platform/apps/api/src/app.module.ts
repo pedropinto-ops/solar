@@ -17,6 +17,7 @@ import { UserModule } from './modules/user/user.module.js';
 import { PaymentModule } from './modules/payment/payment.module.js';
 import { PublicModule } from './modules/public/public.module.js';
 import { StockModule } from './modules/stock/stock.module.js';
+import { ReportModule } from './modules/report/report.module.js';
 
 @Module({
   imports: [
@@ -56,6 +57,7 @@ import { StockModule } from './modules/stock/stock.module.js';
     PaymentModule,
     PublicModule,
     StockModule,
+    ReportModule,
   ],
   controllers: [HealthController],
   providers: [

@@ -598,3 +598,44 @@ export function useStockMove() {
     onSuccess: () => invalidateStock(qc),
   });
 }
+
+// =========================================
+//  Relatórios gerenciais
+// =========================================
+
+export interface ReportSummary {
+  start: string;
+  end: string;
+  days: number;
+  totalRooms: number;
+  availableRoomNights: number;
+  roomNightsSold: number;
+  occupancyPercent: number;
+  roomRevenue: number;
+  adr: number;
+  revpar: number;
+  reservationsInPeriod: number;
+  bySource: Array<{
+    source: string;
+    reservations: number;
+    roomNights: number;
+    revenue: number;
+  }>;
+  byDay: Array<{
+    date: string;
+    occupiedRooms: number;
+    occupancyPercent: number;
+    revenue: number;
+  }>;
+}
+
+export function useReportSummary(start: string, end: string) {
+  return useQuery({
+    queryKey: ['reports', 'summary', start, end],
+    queryFn: () =>
+      apiFetch<ReportSummary>(
+        `/reports/summary?start=${start}&end=${end}`,
+      ),
+    enabled: Boolean(start && end),
+  });
+}
