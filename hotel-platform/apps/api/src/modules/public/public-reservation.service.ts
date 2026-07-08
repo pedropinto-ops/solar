@@ -14,6 +14,16 @@ import type { Prisma } from '@prisma/client';
 import { Prisma as P } from '@prisma/client';
 
 /**
+ * Política de preço por idade (Modelo A — diária por pessoa):
+ *   0–8 anos  → grátis
+ *   9–15 anos → taxa fixa/dia
+ *   16+ anos  → diária integral (basePrice da categoria)
+ */
+const CHILD_FREE_MAX_AGE = 8;
+const CHILD_FEE_MAX_AGE = 15;
+const CHILD_DAILY_FEE = 50;
+
+/**
  * Encapsula o Fluxo 1 inteiro: validação de disponibilidade → criação
  * de Guest (ou recuperação) → criação de Reservation PENDING com hold
  * → criação de Payment Pix via Asaas → resposta com QR Code.
@@ -64,7 +74,7 @@ export class PublicReservationService {
         fullName: string;
         documentType: string;
         documentNumber: string;
-        birthDate?: Date | null;
+        age: number;
       }>;
       guestNotes?: string;
       contractAccepted: boolean;
@@ -228,7 +238,20 @@ export class PublicReservationService {
         (data.checkOutDate.getTime() - data.checkInDate.getTime()) /
           (1000 * 60 * 60 * 24),
       );
-      const totalAmount = roomType.basePrice.mul(nights);
+      // Diária POR PESSOA por idade. Titular = adulto (diária integral).
+      const adultRate = roomType.basePrice;
+      const childFee = new P.Decimal(CHILD_DAILY_FEE);
+      const rateForAge = (age: number) =>
+        age <= CHILD_FREE_MAX_AGE
+          ? new P.Decimal(0)
+          : age <= CHILD_FEE_MAX_AGE
+            ? childFee
+            : adultRate;
+      // Alinha com partyGuests = [titular, ...acompanhantes].
+      const partyRates: P.Decimal[] = [
+        adultRate,
+        ...data.companions.map((c) => rateForAge(c.age)),
+      ];
 
       // 5+6. Cria `roomsNeeded` reservas (uma por quarto), distribuindo os
       //      hóspedes em blocos de `cap`. Tudo na mesma transação (atômico).
@@ -240,6 +263,13 @@ export class PublicReservationService {
       for (let i = 0; i < roomsNeeded; i++) {
         const slice = partyGuests.slice(i * cap, i * cap + cap);
         const roomGuests = slice.length > 0 ? slice : [booker];
+        // Diária do quarto = soma das diárias (por idade) dos seus ocupantes.
+        const sliceRates = partyRates.slice(i * cap, i * cap + cap);
+        const roomDaily = sliceRates.reduce(
+          (s, r) => s.add(r),
+          new P.Decimal(0),
+        );
+        const roomTotal = roomDaily.mul(nights);
         // Código gerado dentro do loop: a contagem enxerga as reservas já
         // criadas nesta mesma transação, então incrementa corretamente.
         const code = await generateReservationCode(tx, propertyId);
@@ -256,8 +286,8 @@ export class PublicReservationService {
               nights,
               adults: roomGuests.length,
               children: 0,
-              totalAmount,
-              dailyRate: roomType.basePrice,
+              totalAmount: roomTotal,
+              dailyRate: roomDaily,
               paidAmount: new P.Decimal(0),
               billingMode: 'DEPOSIT_BALANCE',
               depositPercent: 30,
@@ -310,7 +340,9 @@ export class PublicReservationService {
         tx,
       );
 
-      const grandTotal = totalAmount.mul(roomsNeeded);
+      const grandTotal = partyRates
+        .reduce((s, r) => s.add(r), new P.Decimal(0))
+        .mul(nights);
       return {
         reservations,
         guest: booker,

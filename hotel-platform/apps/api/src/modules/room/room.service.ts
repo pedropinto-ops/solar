@@ -109,8 +109,9 @@ export class RoomService {
         bedConfig: roomType.bedConfig,
         sizeSqm: roomType.sizeSqm,
         dailyRate: roomType.basePrice.toNumber(),
-        // Total já considera a quantidade de quartos necessária p/ o grupo.
-        totalAmount: roomType.basePrice.toNumber() * nights * roomsNeeded,
+        // Estimativa MÁXIMA (todos adultos) — preço é por pessoa/idade, então
+        // o total final é calculado depois com as idades. Quartos não somam.
+        totalAmount: roomType.basePrice.toNumber() * nights * guests,
         available,
         roomsNeeded,
         guests,

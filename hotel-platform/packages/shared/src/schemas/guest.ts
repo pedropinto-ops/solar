@@ -110,7 +110,8 @@ export type CreateGuestPublicInput = z.infer<typeof createGuestPublicSchema>;
 export const createCompanionSchema = z.intersection(
   z.object({
     fullName: guestBaseFields.fullName,
-    birthDate: guestBaseFields.birthDate,
+    // Idade em anos — define a diária por pessoa (política de preço por idade).
+    age: z.coerce.number().int().min(0).max(120),
   }),
   documentNumberByType,
 );

@@ -46,6 +46,18 @@ interface Companion {
   fullName: string;
   documentType: string;
   documentNumber: string;
+  age: string;
+}
+
+// Preço por pessoa por idade (Modelo A). ESPELHA a regra do backend em
+// public-reservation.service.ts — manter em sincronia.
+const CHILD_FREE_MAX_AGE = 8;
+const CHILD_FEE_MAX_AGE = 15;
+const CHILD_DAILY_FEE = 50;
+function personDailyRate(age: number, adultRate: number): number {
+  if (age <= CHILD_FREE_MAX_AGE) return 0;
+  if (age <= CHILD_FEE_MAX_AGE) return CHILD_DAILY_FEE;
+  return adultRate;
 }
 
 interface ReservationCreatedResponse {
@@ -88,7 +100,7 @@ export default function PublicReservePage({
   });
   // Acompanhantes: tamanho = total de hóspedes − 1 (o titular).
   const [companions, setCompanions] = useState<Companion[]>([
-    { fullName: '', documentType: 'CPF', documentNumber: '' },
+    { fullName: '', documentType: 'CPF', documentNumber: '', age: '' },
   ]);
 
   function setGuestsCount(n: number) {
@@ -97,7 +109,7 @@ export default function PublicReservePage({
     setCompanions((prev) => {
       const next = prev.slice(0, g - 1);
       while (next.length < g - 1) {
-        next.push({ fullName: '', documentType: 'CPF', documentNumber: '' });
+        next.push({ fullName: '', documentType: 'CPF', documentNumber: '', age: '' });
       }
       return next;
     });
@@ -151,6 +163,7 @@ export default function PublicReservePage({
             fullName: c.fullName,
             documentType: c.documentType,
             documentNumber: c.documentNumber,
+            age: Number(c.age),
           })),
           contractAccepted: true,
           contractVersion: CONTRACT_VERSION,
@@ -204,6 +217,17 @@ export default function PublicReservePage({
     (rt) => rt.id === selectedRoomTypeId,
   );
 
+  // Total estimado por idade (titular = adulto/diária integral).
+  const nights = availability.data?.nights ?? 0;
+  const estimatedTotal = selectedRoomType
+    ? (selectedRoomType.dailyRate +
+        companions.reduce(
+          (s, c) => s + personDailyRate(Number(c.age) || 0, selectedRoomType.dailyRate),
+          0,
+        )) *
+      nights
+    : 0;
+
   return (
     <div className="min-h-screen bg-sand-50">
       <div className="max-w-lg mx-auto px-4 py-8 space-y-6">
@@ -245,7 +269,8 @@ export default function PublicReservePage({
               </Field>
               <div className="flex items-end">
                 <p className="text-xs text-ink-500 pb-2">
-                  Informe todos os hóspedes. Se passarem da lotação do quarto, abrimos mais quartos automaticamente.
+                  Você (titular) + acompanhantes. Diária por pessoa: até 8 anos grátis,
+                  9–15 anos {fmtCurrency(CHILD_DAILY_FEE)}/dia, 16+ diária integral.
                 </p>
               </div>
             </div>
@@ -289,7 +314,7 @@ export default function PublicReservePage({
 
             <SummaryBox roomType={selectedRoomType.name} rooms={selectedRoomType.roomsNeeded}
               checkIn={availability.data.checkInDate} checkOut={availability.data.checkOutDate}
-              nights={availability.data.nights} total={selectedRoomType.totalAmount} />
+              nights={availability.data.nights} total={estimatedTotal} />
 
             {selectedRoomType.roomsNeeded > 1 && (
               <div className="text-xs bg-teal-50 border border-teal-100 text-teal-900 rounded-lg p-3">
@@ -332,32 +357,51 @@ export default function PublicReservePage({
                 <h3 className="font-serif-display text-lg text-ink-950">
                   Acompanhantes ({companions.length})
                 </h3>
-                {companions.map((c, i) => (
-                  <div key={i} className="space-y-2">
-                    <input type="text" placeholder={`Nome do acompanhante ${i + 1} *`} value={c.fullName}
-                      onChange={(e) => setCompanion(i, { fullName: e.target.value })}
-                      className="w-full rounded-lg border border-sand-200 px-3 min-h-touch-md bg-cream text-sm" />
-                    <div className="grid grid-cols-3 gap-2">
-                      <select value={c.documentType}
-                        onChange={(e) => setCompanion(i, { documentType: e.target.value })}
-                        className="rounded-lg border border-sand-200 px-2 min-h-touch-md bg-cream text-sm">
-                        <option value="CPF">CPF</option>
-                        <option value="PASSPORT">Passaporte</option>
-                      </select>
-                      <input type="text" placeholder={c.documentType === 'CPF' ? 'CPF' : 'Passaporte'}
-                        value={c.documentNumber}
-                        onChange={(e) => setCompanion(i, { documentNumber: e.target.value })}
-                        className="col-span-2 rounded-lg border border-sand-200 px-3 min-h-touch-md bg-cream text-sm" />
+                {companions.map((c, i) => {
+                  const ageNum = Number(c.age);
+                  const rate =
+                    c.age !== '' && selectedRoomType
+                      ? personDailyRate(ageNum, selectedRoomType.dailyRate)
+                      : null;
+                  return (
+                    <div key={i} className="space-y-2 border border-sand-200 rounded-lg p-3">
+                      <input type="text" placeholder={`Nome do acompanhante ${i + 1} *`} value={c.fullName}
+                        onChange={(e) => setCompanion(i, { fullName: e.target.value })}
+                        className="w-full rounded-lg border border-sand-200 px-3 min-h-touch-md bg-cream text-sm" />
+                      <div className="grid grid-cols-3 gap-2">
+                        <select value={c.documentType}
+                          onChange={(e) => setCompanion(i, { documentType: e.target.value })}
+                          className="rounded-lg border border-sand-200 px-2 min-h-touch-md bg-cream text-sm">
+                          <option value="CPF">CPF</option>
+                          <option value="PASSPORT">Passaporte</option>
+                        </select>
+                        <input type="text" placeholder={c.documentType === 'CPF' ? 'CPF' : 'Passaporte'}
+                          value={c.documentNumber}
+                          onChange={(e) => setCompanion(i, { documentNumber: e.target.value })}
+                          className="col-span-2 rounded-lg border border-sand-200 px-3 min-h-touch-md bg-cream text-sm" />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input type="number" min={0} max={120} placeholder="Idade *" value={c.age}
+                          onChange={(e) => setCompanion(i, { age: e.target.value })}
+                          className="w-24 rounded-lg border border-sand-200 px-3 min-h-touch-md bg-cream text-sm" />
+                        {rate !== null && (
+                          <span className="text-xs text-ink-500">
+                            {rate === 0
+                              ? 'Grátis (até 8 anos)'
+                              : `${fmtCurrency(rate)}/noite`}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 
             <button onClick={() => { setError(null); setStep('contract'); }}
               disabled={
                 !guest.fullName || !guest.documentNumber || !guest.email || !guest.phone ||
-                companions.some((c) => !c.fullName.trim() || !c.documentNumber.trim())
+                companions.some((c) => !c.fullName.trim() || !c.documentNumber.trim() || c.age.trim() === '')
               }
               className="w-full bg-teal-900 text-cream font-semibold rounded-lg min-h-touch-md hover:bg-teal-700 disabled:opacity-50">
               Continuar para o contrato →
@@ -372,7 +416,7 @@ export default function PublicReservePage({
 
             <SummaryBox roomType={selectedRoomType.name} rooms={selectedRoomType.roomsNeeded}
               checkIn={availability.data.checkInDate} checkOut={availability.data.checkOutDate}
-              nights={availability.data.nights} total={selectedRoomType.totalAmount}
+              nights={availability.data.nights} total={estimatedTotal}
               guestName={guest.fullName} />
 
             <h2 className="font-serif-display text-xl text-ink-950">{CONTRACT_TITLE}</h2>
@@ -522,12 +566,18 @@ function RoomTypeCard({
       )}
 
       <div className="flex justify-between items-center pt-3 border-t border-sand-200">
-        <div className="text-sm text-teal-700">
-          {roomType.available} disponíve{roomType.available === 1 ? 'l' : 'is'}
+        <div className="text-sm">
+          <div className="text-ink-950 font-semibold">
+            {fmtCurrency(roomType.dailyRate)}{' '}
+            <span className="text-xs font-normal text-ink-500">por adulto/noite</span>
+          </div>
+          <div className="text-xs text-teal-700">
+            {roomType.available} disponíve{roomType.available === 1 ? 'l' : 'is'}
+          </div>
         </div>
         <button onClick={onChoose}
           className="bg-teal-900 text-cream text-sm font-semibold px-4 min-h-touch-sm rounded-lg hover:bg-teal-700 disabled:opacity-50">
-          Total {fmtCurrency(roomType.totalAmount)} →
+          Selecionar →
         </button>
       </div>
     </div>
