@@ -87,10 +87,13 @@ export class EmailService {
    * online). Carrega os dados da reserva internamente; se algo faltar, apenas
    * loga e retorna.
    */
-  async sendReservationReceived(reservationId: string): Promise<void> {
+  async sendReservationReceived(reservationIds: string[]): Promise<void> {
     try {
-      const r = await this.prisma.reservation.findUnique({
-        where: { id: reservationId },
+      if (!reservationIds.length) return;
+
+      const rs = await this.prisma.reservation.findMany({
+        where: { id: { in: reservationIds } },
+        orderBy: { code: 'asc' },
         select: {
           code: true,
           checkInDate: true,
@@ -114,40 +117,46 @@ export class EmailService {
         },
       });
 
-      const to = r?.primaryGuest?.email;
-      if (!r || !to) {
+      const first = rs[0];
+      const to = first?.primaryGuest?.email;
+      if (!first || !to) {
         this.logger.log(
-          `Reserva ${reservationId} sem e-mail de hóspede — pulei o envio.`,
+          `Reservas [${reservationIds.join(', ')}] sem e-mail de hóspede — pulei o envio.`,
         );
         return;
       }
 
+      const rooms = rs.length;
+      const grandTotal = rs.reduce((s, r) => s + Number(r.totalAmount), 0);
+
       const html = reservationReceivedTemplate({
-        guestName: r.primaryGuest?.fullName ?? 'hóspede',
-        propertyName: r.property.name,
-        propertyPhone: r.property.phone,
-        propertyEmail: r.property.email,
-        city: r.property.addressCity,
-        state: r.property.addressState,
-        color: r.property.primaryColor ?? '#0f5b57',
-        code: r.code,
-        checkIn: fmtDate(r.checkInDate),
-        checkOut: fmtDate(r.checkOutDate),
-        nights: r.nights,
-        guests: r.adults + r.children,
-        roomType: r.roomType.name,
-        total: Number(r.totalAmount),
+        guestName: first.primaryGuest?.fullName ?? 'hóspede',
+        propertyName: first.property.name,
+        propertyPhone: first.property.phone,
+        propertyEmail: first.property.email,
+        city: first.property.addressCity,
+        state: first.property.addressState,
+        color: first.property.primaryColor ?? '#9E4620',
+        codes: rs.map((r) => r.code),
+        rooms,
+        checkIn: fmtDate(first.checkInDate),
+        checkOut: fmtDate(first.checkOutDate),
+        nights: first.nights,
+        guests: first.adults + first.children,
+        roomType: first.roomType.name,
+        total: grandTotal,
       });
 
-      await this.send({
-        to,
-        subject: `Recebemos sua solicitação de reserva — ${r.property.name} (${r.code})`,
-        html,
-      });
+      const subject =
+        rooms > 1
+          ? `Recebemos sua solicitação de ${rooms} quartos — ${first.property.name}`
+          : `Recebemos sua solicitação de reserva — ${first.property.name} (${first.code})`;
+
+      await this.send({ to, subject, html });
     } catch (err) {
       // Blindagem final: qualquer erro aqui é engolido.
       this.logger.error(
-        `sendReservationReceived falhou para ${reservationId}: ${(err as Error).message}`,
+        `sendReservationReceived falhou para [${reservationIds.join(', ')}]: ${(err as Error).message}`,
       );
     }
   }
@@ -178,7 +187,8 @@ function reservationReceivedTemplate(d: {
   city: string | null;
   state: string | null;
   color: string;
-  code: string;
+  codes: string[];
+  rooms: number;
   checkIn: string;
   checkOut: string;
   nights: number;
@@ -186,6 +196,7 @@ function reservationReceivedTemplate(d: {
   roomType: string;
   total: number;
 }): string {
+  const multi = d.rooms > 1;
   const contato = [
     d.propertyPhone ? `Telefone: ${d.propertyPhone}` : null,
     d.propertyEmail ? `E-mail: ${d.propertyEmail}` : null,
@@ -213,18 +224,18 @@ function reservationReceivedTemplate(d: {
         <tr><td style="padding:28px;">
           <p style="margin:0 0 12px;color:#111827;font-size:16px;">Olá, ${d.guestName}!</p>
           <p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.5;">
-            Recebemos a sua <strong>solicitação de reserva</strong>. Veja abaixo os detalhes.
-            Em breve nossa recepção entrará em contato para <strong>confirmar a disponibilidade
-            e combinar o pagamento</strong>.
+            Recebemos a sua <strong>solicitação de reserva${multi ? ` de ${d.rooms} quartos` : ''}</strong>.
+            Veja abaixo os detalhes. Em breve nossa recepção entrará em contato para
+            <strong>confirmar a disponibilidade e combinar o pagamento</strong>.
           </p>
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid #e7e1d5;border-bottom:1px solid #e7e1d5;margin-bottom:20px;">
-            ${row('Código', d.code)}
-            ${row('Acomodação', d.roomType)}
+            ${row(multi ? 'Códigos' : 'Código', d.codes.join(', '))}
+            ${row('Acomodação', multi ? `${d.rooms} × ${d.roomType}` : d.roomType)}
             ${row('Check-in', d.checkIn)}
             ${row('Check-out', d.checkOut)}
             ${row('Noites', String(d.nights))}
-            ${row('Hóspedes', String(d.guests))}
-            ${row('Total das diárias', fmtBRL(d.total))}
+            ${row(multi ? 'Hóspedes por quarto' : 'Hóspedes', String(d.guests))}
+            ${row(multi ? `Total (${d.rooms} quartos)` : 'Total das diárias', fmtBRL(d.total))}
           </table>
           <p style="margin:0 0 4px;color:#6b7280;font-size:13px;line-height:1.5;">
             Esta mensagem confirma apenas o <strong>recebimento</strong> do pedido. A reserva só

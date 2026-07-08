@@ -14,6 +14,12 @@ export const createPublicReservationSchema = z
     checkOutDate: z.coerce.date(),
     adults: z.number().int().min(1).max(10),
     children: z.number().int().min(0).max(10).default(0),
+    /**
+     * Quantidade de quartos desta categoria na mesma reserva. Cada quarto
+     * vira uma Reservation própria (mesmo titular, mesmas datas), criadas
+     * atomicamente. `adults`/`children` valem POR quarto.
+     */
+    roomsQuantity: z.number().int().min(1).max(10).default(1),
     guest: createGuestPublicSchema,
     guestNotes: z.string().max(500).optional(),
     /**

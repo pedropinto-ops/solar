@@ -40,13 +40,10 @@ interface AvailabilityResponse {
 }
 
 interface ReservationCreatedResponse {
-  reservation: {
-    id: string;
-    code: string;
-    status: string;
-    totalAmount: number;
-    depositAmount: number;
-  };
+  reservations: Array<{ id: string; code: string; status: string }>;
+  roomsQuantity: number;
+  totalAmount: number;
+  depositAmount: number;
 }
 
 function fmtDate(iso: string): string {
@@ -72,6 +69,7 @@ export default function PublicReservePage({
     children: 0,
   });
   const [selectedRoomTypeId, setSelectedRoomTypeId] = useState<string | null>(null);
+  const [roomsQuantity, setRoomsQuantity] = useState(1);
 
   const [guest, setGuest] = useState({
     fullName: '',
@@ -117,6 +115,7 @@ export default function PublicReservePage({
           checkOutDate: search.checkOutDate,
           adults: search.adults,
           children: search.children,
+          roomsQuantity,
           guest: {
             fullName: guest.fullName,
             documentType: guest.documentType,
@@ -141,8 +140,9 @@ export default function PublicReservePage({
     }
   }
 
-  function chooseRoomType(id: string) {
+  function chooseRoomType(id: string, quantity: number) {
     setSelectedRoomTypeId(id);
+    setRoomsQuantity(quantity);
     setStep('guest');
   }
 
@@ -255,7 +255,7 @@ export default function PublicReservePage({
                   </div>
                 ) : (
                   availability.data.roomTypes.map((rt) => (
-                    <RoomTypeCard key={rt.id} roomType={rt} onChoose={() => chooseRoomType(rt.id)} />
+                    <RoomTypeCard key={rt.id} roomType={rt} onChoose={(q) => chooseRoomType(rt.id, q)} />
                   ))
                 )}
               </div>
@@ -268,9 +268,9 @@ export default function PublicReservePage({
           <div className="bg-cream rounded-2xl border border-sand-200 p-5 space-y-4">
             <button onClick={() => setStep('search')} className="text-sm text-teal-700 hover:underline">← voltar</button>
 
-            <SummaryBox roomType={selectedRoomType.name}
+            <SummaryBox roomType={selectedRoomType.name} rooms={roomsQuantity}
               checkIn={availability.data.checkInDate} checkOut={availability.data.checkOutDate}
-              nights={availability.data.nights} total={selectedRoomType.totalAmount} />
+              nights={availability.data.nights} total={selectedRoomType.totalAmount * roomsQuantity} />
 
             <h2 className="font-serif-display text-xl text-ink-950">Seus dados</h2>
 
@@ -314,9 +314,9 @@ export default function PublicReservePage({
           <div className="bg-cream rounded-2xl border border-sand-200 p-5 space-y-4">
             <button onClick={() => setStep('guest')} className="text-sm text-teal-700 hover:underline">← voltar</button>
 
-            <SummaryBox roomType={selectedRoomType.name}
+            <SummaryBox roomType={selectedRoomType.name} rooms={roomsQuantity}
               checkIn={availability.data.checkInDate} checkOut={availability.data.checkOutDate}
-              nights={availability.data.nights} total={selectedRoomType.totalAmount}
+              nights={availability.data.nights} total={selectedRoomType.totalAmount * roomsQuantity}
               guestName={guest.fullName} />
 
             <h2 className="font-serif-display text-xl text-ink-950">{CONTRACT_TITLE}</h2>
@@ -356,16 +356,24 @@ export default function PublicReservePage({
             </div>
             <h2 className="font-serif-display text-2xl text-teal-900">Solicitação enviada!</h2>
             <div className="text-sm text-ink-700">
-              Sua solicitação de reserva foi registrada com o código{' '}
-              <strong className="text-ink-950">{result.reservation.code}</strong> e o contrato foi aceito.
+              {result.roomsQuantity > 1 ? (
+                <>Sua solicitação de <strong>{result.roomsQuantity} quartos</strong> foi registrada com os códigos{' '}
+                  <strong className="text-ink-950">{result.reservations.map((r) => r.code).join(', ')}</strong>{' '}
+                  e o contrato foi aceito.</>
+              ) : (
+                <>Sua solicitação de reserva foi registrada com o código{' '}
+                  <strong className="text-ink-950">{result.reservations[0]?.code}</strong> e o contrato foi aceito.</>
+              )}
             </div>
             <div className="bg-sand-50 rounded-lg p-3 text-xs text-ink-600 text-left space-y-1">
               <div>O <strong>Solar Irará Hotel</strong> vai entrar em contato pelo WhatsApp{' '}
                 <strong>{guest.phone}</strong> ou e-mail <strong>{guest.email}</strong> para
                 confirmar a disponibilidade e combinar o pagamento.</div>
-              <div>Total estimado da estadia: <strong>{fmtCurrency(result.reservation.totalAmount)}</strong>.</div>
+              <div>Total estimado da estadia: <strong>{fmtCurrency(result.totalAmount)}</strong>.</div>
             </div>
-            <p className="text-[11px] text-ink-400">Guarde o código da sua solicitação.</p>
+            <p className="text-[11px] text-ink-400">
+              Guarde {result.roomsQuantity > 1 ? 'os códigos' : 'o código'} da sua solicitação.
+            </p>
           </div>
         )}
 
@@ -387,13 +395,13 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 function SummaryBox({
-  roomType, checkIn, checkOut, nights, total, guestName,
+  roomType, checkIn, checkOut, nights, total, guestName, rooms,
 }: {
-  roomType: string; checkIn: string; checkOut: string; nights: number; total: number; guestName?: string;
+  roomType: string; checkIn: string; checkOut: string; nights: number; total: number; guestName?: string; rooms?: number;
 }) {
   return (
     <div className="bg-sand-50 rounded-lg border border-sand-200 p-3 text-sm">
-      <div className="font-medium text-ink-950">{roomType}</div>
+      <div className="font-medium text-ink-950">{rooms && rooms > 1 ? `${rooms} × ${roomType}` : roomType}</div>
       <div className="text-ink-500 text-xs mt-0.5">
         {fmtDate(checkIn)} → {fmtDate(checkOut)} · {nights} noite{nights > 1 ? 's' : ''}
       </div>
@@ -425,8 +433,13 @@ function RoomTypeCard({
   roomType, onChoose,
 }: {
   roomType: AvailabilityResponse['roomTypes'][number];
-  onChoose: () => void;
+  onChoose: (quantity: number) => void;
 }) {
+  const [qty, setQty] = useState(1);
+  const max = Math.max(1, roomType.available);
+  const clamp = (n: number) => Math.min(max, Math.max(1, n));
+  const total = roomType.totalAmount * qty;
+
   return (
     <div className="border border-sand-200 rounded-xl p-4 bg-cream">
       <div className="flex justify-between items-start mb-2">
@@ -450,15 +463,30 @@ function RoomTypeCard({
         </div>
       )}
 
+      {!roomType.soldOut && (
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-sm text-ink-700">Quartos</span>
+          <div className="flex items-center gap-3">
+            <button type="button" aria-label="Menos"
+              onClick={() => setQty((q) => clamp(q - 1))} disabled={qty <= 1}
+              className="w-8 h-8 rounded-lg border border-sand-200 text-ink-700 text-lg leading-none disabled:opacity-40 hover:border-teal-700">−</button>
+            <span className="w-6 text-center font-semibold text-ink-950 tabular-nums">{qty}</span>
+            <button type="button" aria-label="Mais"
+              onClick={() => setQty((q) => clamp(q + 1))} disabled={qty >= max}
+              className="w-8 h-8 rounded-lg border border-sand-200 text-ink-700 text-lg leading-none disabled:opacity-40 hover:border-teal-700">+</button>
+          </div>
+        </div>
+      )}
+
       <div className="flex justify-between items-center pt-3 border-t border-sand-200">
         <div className="text-sm">
           {roomType.soldOut
             ? <span className="text-red-600 font-medium">Esgotado</span>
             : <span className="text-teal-700">{roomType.available} disponíve{roomType.available === 1 ? 'l' : 'is'}</span>}
         </div>
-        <button onClick={onChoose} disabled={roomType.soldOut}
+        <button onClick={() => onChoose(qty)} disabled={roomType.soldOut}
           className="bg-teal-900 text-cream text-sm font-semibold px-4 min-h-touch-sm rounded-lg hover:bg-teal-700 disabled:opacity-50">
-          Total {fmtCurrency(roomType.totalAmount)} →
+          Total {fmtCurrency(total)} →
         </button>
       </div>
     </div>

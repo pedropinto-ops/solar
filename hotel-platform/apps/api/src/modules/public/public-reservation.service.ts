@@ -52,6 +52,7 @@ export class PublicReservationService {
       checkOutDate: Date;
       adults: number;
       children: number;
+      roomsQuantity: number;
       guest: {
         fullName: string;
         documentType: string;
@@ -155,6 +156,15 @@ export class PublicReservationService {
           title: 'Quarto não está mais disponível para o período',
         });
       }
+      if (available < data.roomsQuantity) {
+        throw new ConflictException({
+          errorCode: 'NOT_ENOUGH_ROOMS',
+          title:
+            available === 1
+              ? 'Resta apenas 1 quarto para este período.'
+              : `Restam apenas ${available} quartos para este período.`,
+        });
+      }
 
       // 3. Cria ou recupera Guest (deduplicação por documento)
       const docCleaned = data.guest.documentNumber.replace(/\D/g, '') || data.guest.documentNumber;
@@ -202,49 +212,63 @@ export class PublicReservationService {
       );
       const totalAmount = roomType.basePrice.mul(nights);
 
-      // 5. Gera código
-      const code = await generateReservationCode(tx, propertyId);
+      // 5+6. Cria N reservas (uma por quarto), atomicamente. Mesmo titular,
+      //      mesmas datas. Quando há mais de um quarto, marca todas com o
+      //      mesmo grupo em sourceDetails p/ a recepção correlacionar (sem
+      //      precisar de coluna nova no banco).
+      const groupTag =
+        data.roomsQuantity > 1 ? `group:${data.idempotencyKey}` : null;
+      const reservations: Array<{
+        id: string;
+        code: string;
+        status: string;
+      }> = [];
 
-      // 6. Cria a solicitação de reserva (PENDING, sem pagamento online).
-      //    Sem holdExpiresAt: não é cancelada pelo cron; aguarda confirmação do hotel.
-      let reservation;
-      try {
-        reservation = await tx.reservation.create({
-          data: {
-            propertyId,
-            code,
-            primaryGuestId: guest.id,
-            roomTypeId: data.roomTypeId,
-            // roomId: null — alocação no check-in
-            checkInDate: data.checkInDate,
-            checkOutDate: data.checkOutDate,
-            nights,
-            adults: data.adults,
-            children: data.children,
-            totalAmount,
-            dailyRate: roomType.basePrice,
-            paidAmount: new P.Decimal(0),
-            billingMode: 'DEPOSIT_BALANCE',
-            depositPercent: 30,
-            source: 'DIRECT',
-            status: 'PENDING',
-            holdExpiresAt: null,
-            guestNotes: data.guestNotes,
-            contractAccepted: true,
-            contractAcceptedAt: new Date(),
-            contractVersion: data.contractVersion,
-            contractAcceptedIp: ip ?? null,
-            guests: { create: { guestId: guest.id, isPrimary: true } },
-          },
-        });
-      } catch (err: any) {
-        if (err.code === 'P2010' || /no_overbooking/i.test(err.message ?? '')) {
-          throw new ConflictException({
-            errorCode: 'ROOM_NO_LONGER_AVAILABLE',
-            title: 'Acabou de ser reservado por outra pessoa. Tente outra data.',
+      for (let i = 0; i < data.roomsQuantity; i++) {
+        // Código gerado dentro do loop: a contagem enxerga as reservas já
+        // criadas nesta mesma transação, então incrementa corretamente.
+        const code = await generateReservationCode(tx, propertyId);
+        try {
+          const reservation = await tx.reservation.create({
+            data: {
+              propertyId,
+              code,
+              primaryGuestId: guest.id,
+              roomTypeId: data.roomTypeId,
+              // roomId: null — alocação no check-in
+              checkInDate: data.checkInDate,
+              checkOutDate: data.checkOutDate,
+              nights,
+              adults: data.adults,
+              children: data.children,
+              totalAmount,
+              dailyRate: roomType.basePrice,
+              paidAmount: new P.Decimal(0),
+              billingMode: 'DEPOSIT_BALANCE',
+              depositPercent: 30,
+              source: 'DIRECT',
+              sourceDetails: groupTag,
+              status: 'PENDING',
+              holdExpiresAt: null,
+              guestNotes: data.guestNotes,
+              contractAccepted: true,
+              contractAcceptedAt: new Date(),
+              contractVersion: data.contractVersion,
+              contractAcceptedIp: ip ?? null,
+              guests: { create: { guestId: guest.id, isPrimary: true } },
+            },
+            select: { id: true, code: true, status: true },
           });
+          reservations.push(reservation);
+        } catch (err: any) {
+          if (err.code === 'P2010' || /no_overbooking/i.test(err.message ?? '')) {
+            throw new ConflictException({
+              errorCode: 'ROOM_NO_LONGER_AVAILABLE',
+              title: 'Acabou de ser reservado por outra pessoa. Tente outra data.',
+            });
+          }
+          throw err;
         }
-        throw err;
       }
 
       await this.audit.log(
@@ -253,9 +277,10 @@ export class PublicReservationService {
           userId: null,
           action: 'reservation.created_public',
           entityType: 'Reservation',
-          entityId: reservation.id,
+          entityId: reservations[0]!.id,
           changes: {
-            code: reservation.code,
+            codes: reservations.map((r) => r.code),
+            rooms: data.roomsQuantity,
             source: 'DIRECT',
             idempotencyKey: data.idempotencyKey,
           },
@@ -264,27 +289,30 @@ export class PublicReservationService {
         tx,
       );
 
-      return { reservation, guest, depositAmount: totalAmount.mul(30).div(100).toNumber() };
+      const grandTotal = totalAmount.mul(data.roomsQuantity);
+      return {
+        reservations,
+        guest,
+        grandTotal: grandTotal.toNumber(),
+        depositAmount: grandTotal.mul(30).div(100).toNumber(),
+      };
     });
 
     // 7. Sem pagamento online nesta fase: a reserva é uma SOLICITAÇÃO com
     //    contrato aceito. A recepção valida e combina o pagamento à parte.
     const responseBody = {
-      reservation: {
-        id: result.reservation.id,
-        code: result.reservation.code,
-        status: result.reservation.status,
-        totalAmount: result.reservation.totalAmount.toNumber(),
-        depositAmount: result.depositAmount,
-      },
+      reservations: result.reservations,
+      roomsQuantity: result.reservations.length,
+      totalAmount: result.grandTotal,
+      depositAmount: result.depositAmount,
       payment: null,
     };
 
-    // E-mail de "solicitação recebida" — dispara e esquece. O EmailService
-    // engole qualquer erro internamente, mas o void + catch garante que uma
-    // rejeição jamais escape para o fluxo da reserva.
+    // E-mail único de "solicitação recebida" (lista todos os quartos) —
+    // dispara e esquece. O EmailService engole qualquer erro internamente,
+    // mas o void + catch garante que uma rejeição jamais escape do fluxo.
     void this.email
-      .sendReservationReceived(result.reservation.id)
+      .sendReservationReceived(result.reservations.map((r) => r.id))
       .catch((err) =>
         this.logger.error(`Falha ao enviar e-mail de reserva: ${err?.message}`),
       );
