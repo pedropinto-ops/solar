@@ -150,7 +150,7 @@ export class AssistantService {
     }
 
     // Excedeu o limite de rodadas de ferramenta.
-    this.cleanup();
+    this.enforceCapacity();
     return {
       conversationId: convId,
       reply:
