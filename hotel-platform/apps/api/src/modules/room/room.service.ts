@@ -8,6 +8,33 @@ export interface AvailabilityParams {
   guests: number;
 }
 
+/**
+ * Aloca quartos para um grupo com base na capacidade REAL de cada quarto livre.
+ * Estratégia: o MENOR quarto único que caiba o grupo (pra não gastar um quarto
+ * grande com um casal); se nenhum quarto único couber, combina os maiores
+ * primeiro. Retorna a lista de capacidades usadas (nessa ordem), ou null se o
+ * grupo não couber nos quartos disponíveis.
+ */
+export function allocateByCapacity(
+  freeCaps: number[],
+  guests: number,
+): number[] | null {
+  if (guests <= 0 || freeCaps.length === 0) return null;
+  const asc = [...freeCaps].sort((a, b) => a - b);
+  for (const c of asc) {
+    if (c >= guests) return [c]; // menor quarto único que cabe
+  }
+  const desc = [...freeCaps].sort((a, b) => b - a);
+  const used: number[] = [];
+  let remaining = guests;
+  for (const c of desc) {
+    used.push(c);
+    remaining -= c;
+    if (remaining <= 0) return used;
+  }
+  return null; // capacidade total insuficiente
+}
+
 @Injectable()
 export class RoomService {
   constructor(private readonly prisma: PrismaService) {}
@@ -58,15 +85,15 @@ export class RoomService {
       },
     });
 
-    // Para cada tipo, conta quartos livres no período
+    // Para cada tipo, apura os quartos LIVRES no período (com sua capacidade).
     const result = await Promise.all(
       roomTypes.map(async (rt) => {
         const roomIds = rt.rooms.map((r) => r.id);
         if (roomIds.length === 0) {
-          return { roomType: rt, available: 0 };
+          return { roomType: rt, freeCaps: [] as number[] };
         }
 
-        // Conta quartos do tipo que TÊM conflito no período
+        // Quartos do tipo que TÊM conflito no período
         const conflictingRoomIds = await this.prisma.reservation.findMany({
           where: {
             propertyId,
@@ -88,35 +115,39 @@ export class RoomService {
         const conflictingIds = new Set(
           conflictingRoomIds.map((r) => r.roomId).filter((id): id is string => !!id),
         );
-        const available = roomIds.filter((id) => !conflictingIds.has(id)).length;
+        // Capacidade REAL de cada quarto livre.
+        const freeCaps = rt.rooms
+          .filter((r) => !conflictingIds.has(r.id))
+          .map((r) => r.maxOccupancy);
 
-        return { roomType: rt, available };
+        return { roomType: rt, freeCaps };
       }),
     );
 
-    return result.map(({ roomType, available }) => {
-      const roomsNeeded = Math.max(
-        1,
-        Math.ceil(guests / Math.max(1, roomType.maxOccupancy)),
-      );
+    return result.map(({ roomType, freeCaps }) => {
+      // Aloca por capacidade real: quantos quartos o grupo precisa de fato.
+      const alloc = allocateByCapacity(freeCaps, guests);
+      const maxCap = freeCaps.length ? Math.max(...freeCaps) : 0;
       return {
         id: roomType.id,
         name: roomType.name,
         description: roomType.description,
         photos: roomType.photos,
         amenities: roomType.amenities,
-        maxOccupancy: roomType.maxOccupancy,
+        // Maior quarto livre (referência de "cabe até X por quarto").
+        maxOccupancy: maxCap,
         bedConfig: roomType.bedConfig,
         sizeSqm: roomType.sizeSqm,
         dailyRate: roomType.basePrice.toNumber(),
         // Estimativa MÁXIMA (todos adultos) — preço é por pessoa/idade, então
         // o total final é calculado depois com as idades. Quartos não somam.
         totalAmount: roomType.basePrice.toNumber() * nights * guests,
-        available,
-        roomsNeeded,
+        available: freeCaps.length,
+        // Nº de quartos que o grupo vai ocupar (0 se não couber).
+        roomsNeeded: alloc ? alloc.length : 0,
         guests,
-        // "Esgotado" = não há quartos suficientes para o grupo.
-        soldOut: available < roomsNeeded,
+        // "Esgotado" = não dá pra acomodar o grupo com os quartos livres.
+        soldOut: alloc === null,
       };
     });
   }

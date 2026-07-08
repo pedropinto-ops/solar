@@ -9,6 +9,7 @@ import { PrismaService } from '../../common/prisma/prisma.service.js';
 import { AuditService } from '../../common/audit/audit.service.js';
 import { PaymentService } from '../payment/payment.service.js';
 import { EmailService } from '../email/email.service.js';
+import { allocateByCapacity } from '../room/room.service.js';
 import { generateReservationCode } from '../../common/utils/reservation-code.js';
 import type { Prisma } from '@prisma/client';
 import { Prisma as P } from '@prisma/client';
@@ -114,12 +115,9 @@ export class PublicReservationService {
           title: 'Categoria de quarto não encontrada',
         });
       }
-      // Quantos quartos o grupo precisa, pela lotação da categoria.
-      const cap = Math.max(1, roomType.maxOccupancy);
       const totalGuests = 1 + data.companions.length;
-      const roomsNeeded = Math.ceil(totalGuests / cap);
 
-      // 2. Verifica disponibilidade da categoria no período
+      // 2. Quartos LIVRES desta categoria no período (com capacidade real).
       const roomsOfType = await tx.room.findMany({
         where: {
           propertyId,
@@ -127,17 +125,16 @@ export class PublicReservationService {
           active: true,
           status: { notIn: ['MAINTENANCE', 'BLOCKED', 'OUT_OF_ORDER'] },
         },
-        select: { id: true },
+        select: { id: true, maxOccupancy: true },
       });
-      const roomIds = roomsOfType.map((r) => r.id);
-      if (roomIds.length === 0) {
+      if (roomsOfType.length === 0) {
         throw new ConflictException({
           errorCode: 'ROOM_NO_LONGER_AVAILABLE',
           title: 'Não há quartos desta categoria',
         });
       }
+      const roomIds = roomsOfType.map((r) => r.id);
 
-      // Conta quantos têm conflito no período
       const conflicting = await tx.reservation.findMany({
         where: {
           propertyId,
@@ -155,21 +152,28 @@ export class PublicReservationService {
         select: { roomId: true },
         distinct: ['roomId'],
       });
-
       const conflictingIds = new Set(
         conflicting.map((c) => c.roomId).filter((id): id is string => !!id),
       );
-      const available = roomIds.length - conflictingIds.size;
+      const freeRooms = roomsOfType.filter((r) => !conflictingIds.has(r.id));
 
-      if (available < roomsNeeded) {
+      // Aloca quartos por CAPACIDADE real: menor quarto que caiba o grupo;
+      // se nenhum couber sozinho, combina. allocCaps = capacidade de cada
+      // quarto usado, na ordem em que os hóspedes serão distribuídos.
+      const allocCaps = allocateByCapacity(
+        freeRooms.map((r) => r.maxOccupancy),
+        totalGuests,
+      );
+      if (!allocCaps) {
         throw new ConflictException({
           errorCode: 'NOT_ENOUGH_ROOMS',
           title:
-            available <= 0
+            freeRooms.length === 0
               ? 'Não há quartos disponíveis para este período.'
-              : `${totalGuests} hóspedes precisam de ${roomsNeeded} quarto(s), mas só há ${available} disponível(is) neste período.`,
+              : `Não há quartos suficientes para acomodar ${totalGuests} hóspedes neste período.`,
         });
       }
+      const roomsNeeded = allocCaps.length;
 
       // 3. Cria/recupera cada hóspede (dedupe por documento). O titular
       //    carrega o contato (e-mail/telefone); acompanhantes só nome+doc.
@@ -253,18 +257,21 @@ export class PublicReservationService {
         ...data.companions.map((c) => rateForAge(c.age)),
       ];
 
-      // 5+6. Cria `roomsNeeded` reservas (uma por quarto), distribuindo os
-      //      hóspedes em blocos de `cap`. Tudo na mesma transação (atômico).
-      //      Quando há mais de um quarto, marca todas com o mesmo grupo em
-      //      sourceDetails p/ a recepção correlacionar (sem coluna nova).
+      // 5+6. Cria uma reserva por quarto alocado, distribuindo os hóspedes
+      //      até a capacidade REAL de cada quarto (allocCaps). Tudo na mesma
+      //      transação (atômico). Com mais de um quarto, marca todas com o
+      //      mesmo grupo em sourceDetails p/ a recepção correlacionar.
       const groupTag = roomsNeeded > 1 ? `group:${data.idempotencyKey}` : null;
       const reservations: Array<{ id: string; code: string; status: string }> = [];
 
+      let offset = 0;
       for (let i = 0; i < roomsNeeded; i++) {
-        const slice = partyGuests.slice(i * cap, i * cap + cap);
-        const roomGuests = slice.length > 0 ? slice : [booker];
+        const roomCap = allocCaps[i]!;
+        const slice = partyGuests.slice(offset, offset + roomCap);
         // Diária do quarto = soma das diárias (por idade) dos seus ocupantes.
-        const sliceRates = partyRates.slice(i * cap, i * cap + cap);
+        const sliceRates = partyRates.slice(offset, offset + roomCap);
+        offset += roomCap;
+        const roomGuests = slice.length > 0 ? slice : [booker];
         const roomDaily = sliceRates.reduce(
           (s, r) => s.add(r),
           new P.Decimal(0),

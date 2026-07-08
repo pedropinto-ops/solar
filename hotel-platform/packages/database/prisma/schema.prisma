@@ -188,6 +188,8 @@ model Room {
   name         String?                             // nome do quarto: "Candeal", "Massaranduba"
   floor        Int?
   status       RoomStatus @default(AVAILABLE)
+  maxOccupancy Int        @default(2)               // lotação real DESTE quarto (2..5)
+  bedSetup     String?                              // descrição do arranjo de camas (recepção arruma)
   notes        String?                             // "ar quebrado", "vista parcial"
 
   active       Boolean    @default(true)
