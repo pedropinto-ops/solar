@@ -15,6 +15,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.110.0",
     "@hotel/database": "workspace:*",
     "@hotel/shared": "workspace:*",
     "@prisma/client": "^5.22.0",
