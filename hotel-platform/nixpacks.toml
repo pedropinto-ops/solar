@@ -2,7 +2,10 @@
 nixPkgs = ["nodejs_20", "pnpm-9_x"]
 
 [phases.install]
-cmds = ["pnpm install --no-frozen-lockfile"]
+# --prod=false: o Railway define NODE_ENV=production, e nesse modo o pnpm PULA
+# as devDependencies (tsc, nest, typescript) — quebrando o build ("tsc: not
+# found"). --prod=false força instalar TUDO (dev + prod) no build.
+cmds = ["pnpm install --no-frozen-lockfile --prod=false"]
 
 [phases.build]
 cmds = [
