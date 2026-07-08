@@ -20,7 +20,9 @@ import { createPublicReservationSchema } from '@hotel/shared/schemas';
  * Estado da conversa em memória (single-instance MVP). Reinício perde as
  * conversas em andamento — aceitável nesta fase.
  */
-const MODEL = 'claude-opus-4-8';
+// Sonnet: ótimo em tool use por uma fração do custo do Opus — adequado para
+// um assistente de reserva. (Trocável se precisar de mais capacidade.)
+const MODEL = 'claude-sonnet-4-6';
 const MAX_TOOL_ITERATIONS = 8;
 const CONTRACT_VERSION = 'assistente-ia-2026-07';
 const CONVERSATION_TTL_MS = 30 * 60 * 1000; // 30 min
@@ -34,7 +36,7 @@ interface StoredConversation {
   expiresAt: number;
 }
 
-interface ChatResult {
+export interface ChatResult {
   conversationId: string;
   reply: string;
   reservations?: Array<{ code: string }>;
@@ -251,7 +253,7 @@ export class AssistantService {
             idempotencyKey: d.idempotencyKey,
           },
         });
-        const codes = result.reservations.map((r) => r.code);
+        const codes = result.reservations.map((r: { code: string }) => r.code);
         createdCodes.push(...codes);
         return {
           content: JSON.stringify({
