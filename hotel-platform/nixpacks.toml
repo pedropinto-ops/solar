@@ -9,12 +9,13 @@ cmds = [
   # Restaura permissão de execução dos shims (.bin) — camada de cache do
   # builder às vezes perde o bit de execução ("prisma: Permission denied")
   "find . -path '*/node_modules/.bin/*' -exec chmod +x {} + 2>/dev/null || true",
-  # Gera o Prisma Client de forma robusta contra as DUAS falhas flaky do
-  # Railway: (1) "Cannot find module" quando o caminho fixo do prisma some;
-  # (2) "spawn prisma EACCES" quando o shim .bin perde o exec-bit. Localiza o
-  # build/index.js real no store do pnpm (sempre existe) e o executa com node
-  # (que já é executável) — sem depender de caminho fixo nem de shim.
-  "node $(find node_modules/.pnpm -path '*prisma@*/node_modules/prisma/build/index.js' | head -n1) generate --schema=packages/database/prisma/schema.prisma",
+  # Gera o Prisma Client de forma robusta ao layout do node_modules. Com
+  # shamefully-hoist o prisma é hoistado pra raiz (node_modules/prisma); sem
+  # hoist, fica no .pnpm. Tenta a raiz hoistada primeiro; se não achar,
+  # procura o build/index.js em QUALQUER lugar. Executa com node (já
+  # executável) — evita o exec-bit do shim .bin. (O find só-.pnpm anterior
+  # voltava vazio com o hoist -> "Cannot find module /app/generate".)
+  "PJS=node_modules/prisma/build/index.js; [ -f $PJS ] || PJS=$(find node_modules -path '*/prisma/build/index.js' | head -n1); echo prisma-cli=$PJS; node $PJS generate --schema=packages/database/prisma/schema.prisma",
   "pnpm --filter @hotel/shared build",
   "pnpm --filter @hotel/database build",
   "pnpm --filter @hotel/api build"
