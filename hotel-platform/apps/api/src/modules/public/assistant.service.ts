@@ -5,6 +5,7 @@ import { PropertyService } from '../property/property.service.js';
 import { RoomService } from '../room/room.service.js';
 import { RoomTypeService } from '../room/room-type.service.js';
 import { PublicReservationService } from './public-reservation.service.js';
+import { createPublicReservationSchema } from '@hotel/shared/schemas';
 
 /**
  * "Cérebro" de reserva por IA (Fase 1 do WhatsApp).
@@ -22,6 +23,8 @@ import { PublicReservationService } from './public-reservation.service.js';
 const MODEL = 'claude-opus-4-8';
 const MAX_TOOL_ITERATIONS = 8;
 const CONTRACT_VERSION = 'assistente-ia-2026-07';
+const CONVERSATION_TTL_MS = 30 * 60 * 1000; // 30 min
+const MAX_CONVERSATIONS = 500; // teto para não estourar memória (DoS)
 
 interface StoredConversation {
   messages: Anthropic.MessageParam[];
@@ -68,6 +71,7 @@ export class AssistantService {
     slug: string;
     conversationId?: string;
     message: string;
+    ip?: string;
   }): Promise<ChatResult> {
     const client = this.client;
     if (!client) {
@@ -88,16 +92,17 @@ export class AssistantService {
       if (!roomType) {
         return { conversationId: convId, reply: 'Hotel sem acomodações cadastradas.' };
       }
+      this.enforceCapacity();
       conv = {
         messages: [],
         propertyId: property.id,
         propertySlug: params.slug,
         roomTypeId: roomType.id,
-        expiresAt: Date.now() + 60 * 60 * 1000,
+        expiresAt: Date.now() + CONVERSATION_TTL_MS,
       };
       this.conversations.set(convId, conv);
     }
-    conv.expiresAt = Date.now() + 60 * 60 * 1000;
+    conv.expiresAt = Date.now() + CONVERSATION_TTL_MS;
 
     conv.messages.push({ role: 'user', content: params.message });
 
@@ -122,7 +127,7 @@ export class AssistantService {
           .map((b) => b.text)
           .join('\n')
           .trim();
-        this.cleanup();
+        this.enforceCapacity();
         return {
           conversationId: convId,
           reply: reply || 'Certo!',
@@ -133,7 +138,7 @@ export class AssistantService {
       const toolResults: Anthropic.ToolResultBlockParam[] = [];
       for (const block of response.content) {
         if (block.type !== 'tool_use') continue;
-        const out = await this.runTool(block.name, block.input, conv, createdCodes);
+        const out = await this.runTool(block.name, block.input, conv, createdCodes, params.ip);
         toolResults.push({
           type: 'tool_result',
           tool_use_id: block.id,
@@ -158,6 +163,7 @@ export class AssistantService {
     input: unknown,
     conv: StoredConversation,
     createdCodes: string[],
+    ip?: string,
   ): Promise<{ content: string; isError?: boolean }> {
     try {
       if (name === 'check_availability') {
@@ -172,48 +178,77 @@ export class AssistantService {
       }
 
       if (name === 'create_reservation') {
-        const a = input as {
-          checkInDate: string;
-          checkOutDate: string;
-          contractAccepted: boolean;
+        const a = (input ?? {}) as any;
+        // C1: valida o input da IA pelo MESMO schema Zod do fluxo web —
+        // CPF com checksum, documentos distintos, aceite obrigatório, limites.
+        // A IA (mesmo sob prompt injection) não contorna as regras de negócio.
+        const parsed = createPublicReservationSchema.safeParse({
+          roomTypeId: conv.roomTypeId,
+          checkInDate: a?.checkInDate,
+          checkOutDate: a?.checkOutDate,
           guest: {
-            fullName: string;
-            documentType: string;
-            documentNumber: string;
-            email: string;
-            phone: string;
+            fullName: a?.guest?.fullName,
+            documentType: a?.guest?.documentType,
+            documentNumber: a?.guest?.documentNumber,
+            email: a?.guest?.email,
+            phone: a?.guest?.phone,
+            consentMarketing: false,
+          },
+          companions: Array.isArray(a?.companions)
+            ? a.companions.map((c: any) => ({
+                fullName: c?.fullName,
+                documentType: c?.documentType,
+                documentNumber: c?.documentNumber,
+                age: c?.age,
+              }))
+            : [],
+          contractAccepted: a?.contractAccepted,
+          contractVersion: CONTRACT_VERSION,
+          idempotencyKey: this.newId(),
+        });
+
+        if (!parsed.success) {
+          return {
+            content: JSON.stringify({
+              ok: false,
+              errors: parsed.error.issues.map((iss) => ({
+                campo: iss.path.join('.'),
+                erro: iss.message,
+              })),
+            }),
+            isError: true,
           };
-          companions?: Array<{
-            fullName: string;
-            documentType: string;
-            documentNumber: string;
-            age: number;
-          }>;
-        };
+        }
+
+        const d = parsed.data;
         const result = await this.publicReservation.createReservation({
           propertyId: conv.propertyId,
           propertySlug: conv.propertySlug,
+          ip,
           data: {
-            roomTypeId: conv.roomTypeId,
-            checkInDate: this.toDate(a.checkInDate),
-            checkOutDate: this.toDate(a.checkOutDate),
+            roomTypeId: d.roomTypeId,
+            checkInDate: d.checkInDate,
+            checkOutDate: d.checkOutDate,
             guest: {
-              fullName: a.guest.fullName,
-              documentType: a.guest.documentType,
-              documentNumber: a.guest.documentNumber,
-              email: a.guest.email,
-              phone: a.guest.phone,
-              consentMarketing: false,
+              fullName: d.guest.fullName,
+              documentType: d.guest.documentType,
+              documentNumber: d.guest.documentNumber,
+              email: d.guest.email,
+              phone: d.guest.phone,
+              whatsapp: d.guest.whatsapp ?? null,
+              birthDate: d.guest.birthDate ?? null,
+              consentMarketing: d.guest.consentMarketing,
             },
-            companions: (a.companions ?? []).map((c) => ({
+            companions: d.companions.map((c) => ({
               fullName: c.fullName,
               documentType: c.documentType,
               documentNumber: c.documentNumber,
               age: c.age,
             })),
-            contractAccepted: a.contractAccepted === true,
+            guestNotes: d.guestNotes,
+            contractAccepted: d.contractAccepted,
             contractVersion: CONTRACT_VERSION,
-            idempotencyKey: this.newId(),
+            idempotencyKey: d.idempotencyKey,
           },
         });
         const codes = result.reservations.map((r) => r.code);
@@ -289,11 +324,17 @@ export class AssistantService {
     });
   }
 
-  private cleanup(): void {
-    if (this.conversations.size < 200) return;
+  private enforceCapacity(): void {
     const now = Date.now();
     for (const [id, c] of this.conversations) {
       if (c.expiresAt < now) this.conversations.delete(id);
+    }
+    // Evita crescer sem limite (DoS de memória): remove as conversas mais
+    // antigas (ordem de inserção do Map) até ficar sob o teto.
+    while (this.conversations.size > MAX_CONVERSATIONS) {
+      const oldest = this.conversations.keys().next().value;
+      if (oldest === undefined) break;
+      this.conversations.delete(oldest);
     }
   }
 }

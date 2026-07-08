@@ -1,4 +1,4 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Ip, Post } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { z } from 'zod';
 import { AssistantService } from './assistant.service.js';
@@ -21,13 +21,20 @@ type ChatInput = z.infer<typeof chatSchema>;
 export class AssistantController {
   constructor(private readonly assistant: AssistantService) {}
 
-  @Throttle({ default: { ttl: 60_000, limit: 20 } })
+  // Override dos throttlers NOMEADOS (short/medium existem na config global).
+  // O IA gasta tokens Opus por mensagem — limite apertado por IP contra abuso
+  // de custo: no máx. 2/s e 8/min por IP.
+  @Throttle({ short: { ttl: 1_000, limit: 2 }, medium: { ttl: 60_000, limit: 8 } })
   @Post('chat')
-  async chat(@Body(new ZodValidationPipe(chatSchema)) body: ChatInput) {
+  async chat(
+    @Body(new ZodValidationPipe(chatSchema)) body: ChatInput,
+    @Ip() ip: string,
+  ) {
     return this.assistant.chat({
       slug: body.slug,
       conversationId: body.conversationId,
       message: body.message,
+      ip,
     });
   }
 }

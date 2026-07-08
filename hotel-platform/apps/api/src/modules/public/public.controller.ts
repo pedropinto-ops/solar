@@ -75,7 +75,10 @@ export class PublicController {
    * Endpoint mais sensível — abusado, gera reservas-pendentes em massa e
    * potencialmente cria Pix no Asaas (que tem custo). Limita agressivamente.
    */
-  @Throttle({ default: { ttl: 60_000, limit: 5 } })
+  // Override dos throttlers NOMEADOS (short/medium da config global). O nome
+  // 'default' não existe na config, então o override antigo era IGNORADO —
+  // isto de fato limita: 5/min e 2/s por IP.
+  @Throttle({ short: { ttl: 1_000, limit: 2 }, medium: { ttl: 60_000, limit: 5 } })
   @Post('property/:slug/reservations')
   async createReservation(
     @Param('slug') slug: string,
