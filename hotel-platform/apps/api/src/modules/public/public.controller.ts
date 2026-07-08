@@ -56,8 +56,7 @@ export class PublicController {
       propertyId: property.id,
       checkInDate: query.checkInDate,
       checkOutDate: query.checkOutDate,
-      adults: query.adults,
-      children: query.children,
+      guests: query.guests,
     });
 
     return {

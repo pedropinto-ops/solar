@@ -51,8 +51,9 @@ export const availabilityQuerySchema = z
   .object({
     checkInDate: z.coerce.date(),
     checkOutDate: z.coerce.date(),
-    adults: z.coerce.number().int().min(1).max(10).default(1),
-    children: z.coerce.number().int().min(0).max(10).default(0),
+    // Total de hóspedes da reserva. O nº de quartos é calculado a partir
+    // disto e da lotação da categoria (pode gerar mais de um quarto).
+    guests: z.coerce.number().int().min(1).max(30).default(1),
   })
   .refine(dateRangeRefine, {
     message: 'checkOutDate deve ser posterior a checkInDate',

@@ -5,8 +5,7 @@ export interface AvailabilityParams {
   propertyId: string;
   checkInDate: Date;
   checkOutDate: Date;
-  adults: number;
-  children: number;
+  guests: number;
 }
 
 @Injectable()
@@ -35,18 +34,17 @@ export class RoomService {
    * cujas datas se sobrepõem ao período solicitado.
    */
   async availability(params: AvailabilityParams) {
-    const { propertyId, checkInDate, checkOutDate, adults, children } = params;
-    const totalGuests = adults + children;
+    const { propertyId, checkInDate, checkOutDate, guests } = params;
     const nights = Math.round(
       (checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24),
     );
 
-    // Tipos de quarto que comportam a quantidade de pessoas
+    // Todas as categorias ativas — NÃO filtra por lotação, porque um grupo
+    // maior que a lotação é atendido abrindo mais de um quarto.
     const roomTypes = await this.prisma.roomType.findMany({
       where: {
         propertyId,
         active: true,
-        maxOccupancy: { gte: totalGuests },
       },
       include: {
         rooms: {
@@ -96,20 +94,30 @@ export class RoomService {
       }),
     );
 
-    return result.map(({ roomType, available }) => ({
-      id: roomType.id,
-      name: roomType.name,
-      description: roomType.description,
-      photos: roomType.photos,
-      amenities: roomType.amenities,
-      maxOccupancy: roomType.maxOccupancy,
-      bedConfig: roomType.bedConfig,
-      sizeSqm: roomType.sizeSqm,
-      dailyRate: roomType.basePrice.toNumber(),
-      totalAmount: roomType.basePrice.toNumber() * nights,
-      available,
-      soldOut: available === 0,
-    }));
+    return result.map(({ roomType, available }) => {
+      const roomsNeeded = Math.max(
+        1,
+        Math.ceil(guests / Math.max(1, roomType.maxOccupancy)),
+      );
+      return {
+        id: roomType.id,
+        name: roomType.name,
+        description: roomType.description,
+        photos: roomType.photos,
+        amenities: roomType.amenities,
+        maxOccupancy: roomType.maxOccupancy,
+        bedConfig: roomType.bedConfig,
+        sizeSqm: roomType.sizeSqm,
+        dailyRate: roomType.basePrice.toNumber(),
+        // Total já considera a quantidade de quartos necessária p/ o grupo.
+        totalAmount: roomType.basePrice.toNumber() * nights * roomsNeeded,
+        available,
+        roomsNeeded,
+        guests,
+        // "Esgotado" = não há quartos suficientes para o grupo.
+        soldOut: available < roomsNeeded,
+      };
+    });
   }
 
   /**

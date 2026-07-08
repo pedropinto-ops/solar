@@ -32,11 +32,20 @@ interface AvailabilityResponse {
     description: string | null;
     amenities: string[];
     bedConfig: string | null;
+    maxOccupancy: number;
     dailyRate: number;
     totalAmount: number;
     available: number;
+    roomsNeeded: number;
+    guests: number;
     soldOut: boolean;
   }>;
+}
+
+interface Companion {
+  fullName: string;
+  documentType: string;
+  documentNumber: string;
 }
 
 interface ReservationCreatedResponse {
@@ -65,11 +74,9 @@ export default function PublicReservePage({
   const [search, setSearch] = useState({
     checkInDate: tomorrow,
     checkOutDate: dayAfter,
-    adults: 2,
-    children: 0,
+    guests: 2,
   });
   const [selectedRoomTypeId, setSelectedRoomTypeId] = useState<string | null>(null);
-  const [roomsQuantity, setRoomsQuantity] = useState(1);
 
   const [guest, setGuest] = useState({
     fullName: '',
@@ -79,6 +86,26 @@ export default function PublicReservePage({
     phone: '',
     consentMarketing: false,
   });
+  // Acompanhantes: tamanho = total de hóspedes − 1 (o titular).
+  const [companions, setCompanions] = useState<Companion[]>([
+    { fullName: '', documentType: 'CPF', documentNumber: '' },
+  ]);
+
+  function setGuestsCount(n: number) {
+    const g = Math.max(1, Math.min(30, Number.isFinite(n) ? n : 1));
+    setSearch((s) => ({ ...s, guests: g }));
+    setCompanions((prev) => {
+      const next = prev.slice(0, g - 1);
+      while (next.length < g - 1) {
+        next.push({ fullName: '', documentType: 'CPF', documentNumber: '' });
+      }
+      return next;
+    });
+  }
+
+  function setCompanion(i: number, patch: Partial<Companion>) {
+    setCompanions((prev) => prev.map((c, idx) => (idx === i ? { ...c, ...patch } : c)));
+  }
 
   const [accepted, setAccepted] = useState(false);
   const [result, setResult] = useState<ReservationCreatedResponse | null>(null);
@@ -97,8 +124,7 @@ export default function PublicReservePage({
           new URLSearchParams({
             checkInDate: search.checkInDate,
             checkOutDate: search.checkOutDate,
-            adults: String(search.adults),
-            children: String(search.children),
+            guests: String(search.guests),
           }),
         { skipAuth: true },
       ),
@@ -113,9 +139,6 @@ export default function PublicReservePage({
           roomTypeId: selectedRoomTypeId,
           checkInDate: search.checkInDate,
           checkOutDate: search.checkOutDate,
-          adults: search.adults,
-          children: search.children,
-          roomsQuantity,
           guest: {
             fullName: guest.fullName,
             documentType: guest.documentType,
@@ -124,6 +147,11 @@ export default function PublicReservePage({
             phone: guest.phone,
             consentMarketing: guest.consentMarketing,
           },
+          companions: companions.map((c) => ({
+            fullName: c.fullName,
+            documentType: c.documentType,
+            documentNumber: c.documentNumber,
+          })),
           contractAccepted: true,
           contractVersion: CONTRACT_VERSION,
           idempotencyKey,
@@ -140,9 +168,8 @@ export default function PublicReservePage({
     }
   }
 
-  function chooseRoomType(id: string, quantity: number) {
+  function chooseRoomType(id: string) {
     setSelectedRoomTypeId(id);
-    setRoomsQuantity(quantity);
     setStep('guest');
   }
 
@@ -211,16 +238,16 @@ export default function PublicReservePage({
                   onChange={(e) => setSearch({ ...search, checkOutDate: e.target.value })}
                   className="w-full rounded-lg border border-sand-200 px-3 min-h-touch-md bg-cream text-sm" />
               </Field>
-              <Field label="Adultos">
-                <input type="number" min={1} value={search.adults}
-                  onChange={(e) => setSearch({ ...search, adults: parseInt(e.target.value, 10) || 1 })}
+              <Field label="Hóspedes (total)">
+                <input type="number" min={1} max={30} value={search.guests}
+                  onChange={(e) => setGuestsCount(parseInt(e.target.value, 10))}
                   className="w-full rounded-lg border border-sand-200 px-3 min-h-touch-md bg-cream text-sm" />
               </Field>
-              <Field label="Crianças">
-                <input type="number" min={0} value={search.children}
-                  onChange={(e) => setSearch({ ...search, children: parseInt(e.target.value, 10) || 0 })}
-                  className="w-full rounded-lg border border-sand-200 px-3 min-h-touch-md bg-cream text-sm" />
-              </Field>
+              <div className="flex items-end">
+                <p className="text-xs text-ink-500 pb-2">
+                  Informe todos os hóspedes. Se passarem da lotação do quarto, abrimos mais quartos automaticamente.
+                </p>
+              </div>
             </div>
 
             <button onClick={handleSearch} disabled={availability.isPending}
@@ -230,33 +257,25 @@ export default function PublicReservePage({
 
             {availability.data && (
               <div className="pt-4 border-t border-sand-200 space-y-3">
-                {(() => {
-                  const disponiveis = availability.data.roomTypes
-                    .filter((rt) => !rt.soldOut)
-                    .reduce((soma, rt) => soma + rt.available, 0);
-                  const noites = availability.data.nights;
-                  return (
-                    <div className="text-sm text-ink-500">
-                      {noites} noite{noites > 1 ? 's' : ''} ·{' '}
-                      {disponiveis > 0
-                        ? `${disponiveis} quarto${disponiveis > 1 ? 's' : ''} disponíve${disponiveis > 1 ? 'is' : 'l'}`
-                        : 'sem quartos para esta busca'}
-                    </div>
-                  );
-                })()}
+                <div className="text-sm text-ink-500">
+                  {availability.data.nights} noite{availability.data.nights > 1 ? 's' : ''} ·{' '}
+                  grupo de {search.guests} hóspede{search.guests > 1 ? 's' : ''}
+                </div>
 
-                {availability.data.roomTypes.length === 0 ? (
+                {availability.data.roomTypes.filter((rt) => !rt.soldOut).length === 0 ? (
                   <div className="rounded-xl border border-sand-200 bg-sand-50 p-4 text-sm text-ink-500">
-                    Não encontramos quartos para{' '}
+                    Não temos quartos suficientes para{' '}
                     <strong className="text-ink-950">
-                      {search.adults + search.children} hóspede{search.adults + search.children > 1 ? 's' : ''}
+                      {search.guests} hóspede{search.guests > 1 ? 's' : ''}
                     </strong>{' '}
-                    nessas datas. Tente reduzir o número de pessoas ou falar com a recepção.
+                    nessas datas. Tente outras datas ou fale com a recepção.
                   </div>
                 ) : (
-                  availability.data.roomTypes.map((rt) => (
-                    <RoomTypeCard key={rt.id} roomType={rt} onChoose={(q) => chooseRoomType(rt.id, q)} />
-                  ))
+                  availability.data.roomTypes
+                    .filter((rt) => !rt.soldOut)
+                    .map((rt) => (
+                      <RoomTypeCard key={rt.id} roomType={rt} onChoose={() => chooseRoomType(rt.id)} />
+                    ))
                 )}
               </div>
             )}
@@ -268,11 +287,18 @@ export default function PublicReservePage({
           <div className="bg-cream rounded-2xl border border-sand-200 p-5 space-y-4">
             <button onClick={() => setStep('search')} className="text-sm text-teal-700 hover:underline">← voltar</button>
 
-            <SummaryBox roomType={selectedRoomType.name} rooms={roomsQuantity}
+            <SummaryBox roomType={selectedRoomType.name} rooms={selectedRoomType.roomsNeeded}
               checkIn={availability.data.checkInDate} checkOut={availability.data.checkOutDate}
-              nights={availability.data.nights} total={selectedRoomType.totalAmount * roomsQuantity} />
+              nights={availability.data.nights} total={selectedRoomType.totalAmount} />
 
-            <h2 className="font-serif-display text-xl text-ink-950">Seus dados</h2>
+            {selectedRoomType.roomsNeeded > 1 && (
+              <div className="text-xs bg-teal-50 border border-teal-100 text-teal-900 rounded-lg p-3">
+                Seu grupo de <strong>{search.guests} pessoas</strong> ocupará{' '}
+                <strong>{selectedRoomType.roomsNeeded} quartos</strong> (até {selectedRoomType.maxOccupancy} por quarto).
+              </div>
+            )}
+
+            <h2 className="font-serif-display text-xl text-ink-950">Titular da reserva</h2>
 
             <input type="text" placeholder="Nome completo *" value={guest.fullName}
               onChange={(e) => setGuest({ ...guest, fullName: e.target.value })}
@@ -301,8 +327,38 @@ export default function PublicReservePage({
               Aceito receber comunicações sobre minhas reservas e promoções (LGPD).
             </label>
 
+            {companions.length > 0 && (
+              <div className="space-y-3 pt-2 border-t border-sand-200">
+                <h3 className="font-serif-display text-lg text-ink-950">
+                  Acompanhantes ({companions.length})
+                </h3>
+                {companions.map((c, i) => (
+                  <div key={i} className="space-y-2">
+                    <input type="text" placeholder={`Nome do acompanhante ${i + 1} *`} value={c.fullName}
+                      onChange={(e) => setCompanion(i, { fullName: e.target.value })}
+                      className="w-full rounded-lg border border-sand-200 px-3 min-h-touch-md bg-cream text-sm" />
+                    <div className="grid grid-cols-3 gap-2">
+                      <select value={c.documentType}
+                        onChange={(e) => setCompanion(i, { documentType: e.target.value })}
+                        className="rounded-lg border border-sand-200 px-2 min-h-touch-md bg-cream text-sm">
+                        <option value="CPF">CPF</option>
+                        <option value="PASSPORT">Passaporte</option>
+                      </select>
+                      <input type="text" placeholder={c.documentType === 'CPF' ? 'CPF' : 'Passaporte'}
+                        value={c.documentNumber}
+                        onChange={(e) => setCompanion(i, { documentNumber: e.target.value })}
+                        className="col-span-2 rounded-lg border border-sand-200 px-3 min-h-touch-md bg-cream text-sm" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
             <button onClick={() => { setError(null); setStep('contract'); }}
-              disabled={!guest.fullName || !guest.documentNumber || !guest.email || !guest.phone}
+              disabled={
+                !guest.fullName || !guest.documentNumber || !guest.email || !guest.phone ||
+                companions.some((c) => !c.fullName.trim() || !c.documentNumber.trim())
+              }
               className="w-full bg-teal-900 text-cream font-semibold rounded-lg min-h-touch-md hover:bg-teal-700 disabled:opacity-50">
               Continuar para o contrato →
             </button>
@@ -314,9 +370,9 @@ export default function PublicReservePage({
           <div className="bg-cream rounded-2xl border border-sand-200 p-5 space-y-4">
             <button onClick={() => setStep('guest')} className="text-sm text-teal-700 hover:underline">← voltar</button>
 
-            <SummaryBox roomType={selectedRoomType.name} rooms={roomsQuantity}
+            <SummaryBox roomType={selectedRoomType.name} rooms={selectedRoomType.roomsNeeded}
               checkIn={availability.data.checkInDate} checkOut={availability.data.checkOutDate}
-              nights={availability.data.nights} total={selectedRoomType.totalAmount * roomsQuantity}
+              nights={availability.data.nights} total={selectedRoomType.totalAmount}
               guestName={guest.fullName} />
 
             <h2 className="font-serif-display text-xl text-ink-950">{CONTRACT_TITLE}</h2>
@@ -433,13 +489,8 @@ function RoomTypeCard({
   roomType, onChoose,
 }: {
   roomType: AvailabilityResponse['roomTypes'][number];
-  onChoose: (quantity: number) => void;
+  onChoose: () => void;
 }) {
-  const [qty, setQty] = useState(1);
-  const max = Math.max(1, roomType.available);
-  const clamp = (n: number) => Math.min(max, Math.max(1, n));
-  const total = roomType.totalAmount * qty;
-
   return (
     <div className="border border-sand-200 rounded-xl p-4 bg-cream">
       <div className="flex justify-between items-start mb-2">
@@ -463,30 +514,20 @@ function RoomTypeCard({
         </div>
       )}
 
-      {!roomType.soldOut && (
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-sm text-ink-700">Quartos</span>
-          <div className="flex items-center gap-3">
-            <button type="button" aria-label="Menos"
-              onClick={() => setQty((q) => clamp(q - 1))} disabled={qty <= 1}
-              className="w-8 h-8 rounded-lg border border-sand-200 text-ink-700 text-lg leading-none disabled:opacity-40 hover:border-teal-700">−</button>
-            <span className="w-6 text-center font-semibold text-ink-950 tabular-nums">{qty}</span>
-            <button type="button" aria-label="Mais"
-              onClick={() => setQty((q) => clamp(q + 1))} disabled={qty >= max}
-              className="w-8 h-8 rounded-lg border border-sand-200 text-ink-700 text-lg leading-none disabled:opacity-40 hover:border-teal-700">+</button>
-          </div>
+      {roomType.roomsNeeded > 1 && (
+        <div className="text-xs bg-teal-50 border border-teal-100 text-teal-900 rounded-lg p-2.5 mb-3">
+          {roomType.guests} hóspedes ocupam <strong>{roomType.roomsNeeded} quartos</strong>{' '}
+          (até {roomType.maxOccupancy} por quarto).
         </div>
       )}
 
       <div className="flex justify-between items-center pt-3 border-t border-sand-200">
-        <div className="text-sm">
-          {roomType.soldOut
-            ? <span className="text-red-600 font-medium">Esgotado</span>
-            : <span className="text-teal-700">{roomType.available} disponíve{roomType.available === 1 ? 'l' : 'is'}</span>}
+        <div className="text-sm text-teal-700">
+          {roomType.available} disponíve{roomType.available === 1 ? 'l' : 'is'}
         </div>
-        <button onClick={() => onChoose(qty)} disabled={roomType.soldOut}
+        <button onClick={onChoose}
           className="bg-teal-900 text-cream text-sm font-semibold px-4 min-h-touch-sm rounded-lg hover:bg-teal-700 disabled:opacity-50">
-          Total {fmtCurrency(total)} →
+          Total {fmtCurrency(roomType.totalAmount)} →
         </button>
       </div>
     </div>

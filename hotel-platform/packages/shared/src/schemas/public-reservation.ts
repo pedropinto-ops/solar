@@ -1,26 +1,28 @@
 import { z } from 'zod';
-import { createGuestPublicSchema } from './guest.js';
+import { createGuestPublicSchema, createCompanionSchema } from './guest.js';
+
+/** Normaliza documento para comparação (CPF sem máscara). */
+const normDoc = (s: string) => s.replace(/\D/g, '') || s.trim().toUpperCase();
 
 /**
  * POST /public/property/:slug/reservations
  *
  * Schema explícito para criação pública. Mais restritivo que o
  * de recepção (não aceita roomId, dailyRate é calculado pelo backend, etc).
+ *
+ * O hóspede informa o TITULAR (com contato) + todos os ACOMPANHANTES. O
+ * backend calcula quantos quartos abrir a partir do total de pessoas e da
+ * lotação da categoria, e distribui as pessoas nos quartos.
  */
 export const createPublicReservationSchema = z
   .object({
     roomTypeId: z.string().cuid(),
     checkInDate: z.coerce.date(),
     checkOutDate: z.coerce.date(),
-    adults: z.number().int().min(1).max(10),
-    children: z.number().int().min(0).max(10).default(0),
-    /**
-     * Quantidade de quartos desta categoria na mesma reserva. Cada quarto
-     * vira uma Reservation própria (mesmo titular, mesmas datas), criadas
-     * atomicamente. `adults`/`children` valem POR quarto.
-     */
-    roomsQuantity: z.number().int().min(1).max(10).default(1),
+    /** Titular da reserva (contato: e-mail + telefone). */
     guest: createGuestPublicSchema,
+    /** Demais hóspedes (nome + documento). Pode ser vazio. */
+    companions: z.array(createCompanionSchema).max(29).default([]),
     guestNotes: z.string().max(500).optional(),
     /**
      * Aceite eletrônico do contrato de hospedagem (obrigatório).
@@ -39,7 +41,19 @@ export const createPublicReservationSchema = z
   .refine((d) => d.checkOutDate > d.checkInDate, {
     message: 'checkOutDate deve ser posterior a checkInDate',
     path: ['checkOutDate'],
-  });
+  })
+  .refine(
+    (d) => {
+      const docs = [d.guest.documentNumber, ...d.companions.map((c) => c.documentNumber)].map(
+        normDoc,
+      );
+      return new Set(docs).size === docs.length;
+    },
+    {
+      message: 'Há documentos repetidos entre os hóspedes',
+      path: ['companions'],
+    },
+  );
 
 export type CreatePublicReservationSchemaInput = z.infer<
   typeof createPublicReservationSchema

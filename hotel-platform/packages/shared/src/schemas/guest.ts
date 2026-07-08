@@ -103,6 +103,20 @@ export const createGuestPublicSchema = z.intersection(
 export type CreateGuestPublicInput = z.infer<typeof createGuestPublicSchema>;
 
 /**
+ * Schema de ACOMPANHANTE na reserva pública. Nome + documento (CPF
+ * obrigatório com checksum, ou passaporte etc.). Sem contato próprio — o
+ * contato da reserva é o do titular.
+ */
+export const createCompanionSchema = z.intersection(
+  z.object({
+    fullName: guestBaseFields.fullName,
+    birthDate: guestBaseFields.birthDate,
+  }),
+  documentNumberByType,
+);
+export type CreateCompanionInput = z.infer<typeof createCompanionSchema>;
+
+/**
  * Schema para atualização parcial (PATCH).
  */
 export const updateGuestSchema = z

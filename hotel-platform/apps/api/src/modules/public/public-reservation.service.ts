@@ -50,9 +50,6 @@ export class PublicReservationService {
       roomTypeId: string;
       checkInDate: Date;
       checkOutDate: Date;
-      adults: number;
-      children: number;
-      roomsQuantity: number;
       guest: {
         fullName: string;
         documentType: string;
@@ -63,6 +60,12 @@ export class PublicReservationService {
         birthDate?: Date | null;
         consentMarketing: boolean;
       };
+      companions: Array<{
+        fullName: string;
+        documentType: string;
+        documentNumber: string;
+        birthDate?: Date | null;
+      }>;
       guestNotes?: string;
       contractAccepted: boolean;
       contractVersion: string;
@@ -101,12 +104,10 @@ export class PublicReservationService {
           title: 'Categoria de quarto não encontrada',
         });
       }
-      if (data.adults + data.children > roomType.maxOccupancy) {
-        throw new BadRequestException({
-          errorCode: 'VALIDATION_ERROR',
-          title: `Categoria comporta no máximo ${roomType.maxOccupancy} pessoas`,
-        });
-      }
+      // Quantos quartos o grupo precisa, pela lotação da categoria.
+      const cap = Math.max(1, roomType.maxOccupancy);
+      const totalGuests = 1 + data.companions.length;
+      const roomsNeeded = Math.ceil(totalGuests / cap);
 
       // 2. Verifica disponibilidade da categoria no período
       const roomsOfType = await tx.room.findMany({
@@ -150,60 +151,77 @@ export class PublicReservationService {
       );
       const available = roomIds.length - conflictingIds.size;
 
-      if (available <= 0) {
-        throw new ConflictException({
-          errorCode: 'ROOM_NO_LONGER_AVAILABLE',
-          title: 'Quarto não está mais disponível para o período',
-        });
-      }
-      if (available < data.roomsQuantity) {
+      if (available < roomsNeeded) {
         throw new ConflictException({
           errorCode: 'NOT_ENOUGH_ROOMS',
           title:
-            available === 1
-              ? 'Resta apenas 1 quarto para este período.'
-              : `Restam apenas ${available} quartos para este período.`,
+            available <= 0
+              ? 'Não há quartos disponíveis para este período.'
+              : `${totalGuests} hóspedes precisam de ${roomsNeeded} quarto(s), mas só há ${available} disponível(is) neste período.`,
         });
       }
 
-      // 3. Cria ou recupera Guest (deduplicação por documento)
-      const docCleaned = data.guest.documentNumber.replace(/\D/g, '') || data.guest.documentNumber;
-      let guest = await tx.guest.findFirst({
-        where: {
-          propertyId,
-          documentNumber: docCleaned,
-          deletedAt: null,
+      // 3. Cria/recupera cada hóspede (dedupe por documento). O titular
+      //    carrega o contato (e-mail/telefone); acompanhantes só nome+doc.
+      const upsertGuest = async (
+        g: {
+          fullName: string;
+          documentType: string;
+          documentNumber: string;
+          birthDate?: Date | null;
         },
-      });
-
-      if (guest) {
-        // Atualiza contato (pode ter mudado)
-        guest = await tx.guest.update({
-          where: { id: guest.id },
-          data: {
-            email: data.guest.email,
-            phone: data.guest.phone,
-            whatsapp: data.guest.whatsapp ?? data.guest.phone,
-            consentMarketing: data.guest.consentMarketing || guest.consentMarketing,
-            consentDataAt: guest.consentDataAt ?? new Date(),
-          },
+        contact?: {
+          email: string;
+          phone: string;
+          whatsapp?: string | null;
+          consentMarketing: boolean;
+        },
+      ) => {
+        const docCleaned = g.documentNumber.replace(/\D/g, '') || g.documentNumber;
+        const existing = await tx.guest.findFirst({
+          where: { propertyId, documentNumber: docCleaned, deletedAt: null },
         });
-      } else {
-        guest = await tx.guest.create({
+        if (existing) {
+          if (!contact) return existing;
+          return tx.guest.update({
+            where: { id: existing.id },
+            data: {
+              email: contact.email,
+              phone: contact.phone,
+              whatsapp: contact.whatsapp ?? contact.phone,
+              consentMarketing: contact.consentMarketing || existing.consentMarketing,
+              consentDataAt: existing.consentDataAt ?? new Date(),
+            },
+          });
+        }
+        return tx.guest.create({
           data: {
             propertyId,
-            fullName: data.guest.fullName,
-            documentType: data.guest.documentType as any,
+            fullName: g.fullName,
+            documentType: g.documentType as any,
             documentNumber: docCleaned,
-            email: data.guest.email,
-            phone: data.guest.phone,
-            whatsapp: data.guest.whatsapp ?? data.guest.phone,
-            birthDate: data.guest.birthDate,
-            consentMarketing: data.guest.consentMarketing,
-            consentDataAt: new Date(),
+            birthDate: g.birthDate ?? null,
+            email: contact?.email ?? null,
+            phone: contact?.phone ?? null,
+            whatsapp: contact?.whatsapp ?? contact?.phone ?? null,
+            consentMarketing: contact?.consentMarketing ?? false,
+            consentDataAt: contact ? new Date() : null,
           },
         });
+      };
+
+      const booker = await upsertGuest(data.guest, {
+        email: data.guest.email,
+        phone: data.guest.phone,
+        whatsapp: data.guest.whatsapp,
+        consentMarketing: data.guest.consentMarketing,
+      });
+      const companionGuests: (typeof booker)[] = [];
+      for (const c of data.companions) {
+        companionGuests.push(await upsertGuest(c));
       }
+      // Ordem: titular primeiro, depois acompanhantes na ordem informada.
+      const partyGuests = [booker, ...companionGuests];
 
       // 4. Calcula valores
       const nights = Math.round(
@@ -212,19 +230,16 @@ export class PublicReservationService {
       );
       const totalAmount = roomType.basePrice.mul(nights);
 
-      // 5+6. Cria N reservas (uma por quarto), atomicamente. Mesmo titular,
-      //      mesmas datas. Quando há mais de um quarto, marca todas com o
-      //      mesmo grupo em sourceDetails p/ a recepção correlacionar (sem
-      //      precisar de coluna nova no banco).
-      const groupTag =
-        data.roomsQuantity > 1 ? `group:${data.idempotencyKey}` : null;
-      const reservations: Array<{
-        id: string;
-        code: string;
-        status: string;
-      }> = [];
+      // 5+6. Cria `roomsNeeded` reservas (uma por quarto), distribuindo os
+      //      hóspedes em blocos de `cap`. Tudo na mesma transação (atômico).
+      //      Quando há mais de um quarto, marca todas com o mesmo grupo em
+      //      sourceDetails p/ a recepção correlacionar (sem coluna nova).
+      const groupTag = roomsNeeded > 1 ? `group:${data.idempotencyKey}` : null;
+      const reservations: Array<{ id: string; code: string; status: string }> = [];
 
-      for (let i = 0; i < data.roomsQuantity; i++) {
+      for (let i = 0; i < roomsNeeded; i++) {
+        const slice = partyGuests.slice(i * cap, i * cap + cap);
+        const roomGuests = slice.length > 0 ? slice : [booker];
         // Código gerado dentro do loop: a contagem enxerga as reservas já
         // criadas nesta mesma transação, então incrementa corretamente.
         const code = await generateReservationCode(tx, propertyId);
@@ -233,14 +248,14 @@ export class PublicReservationService {
             data: {
               propertyId,
               code,
-              primaryGuestId: guest.id,
+              primaryGuestId: roomGuests[0]!.id,
               roomTypeId: data.roomTypeId,
               // roomId: null — alocação no check-in
               checkInDate: data.checkInDate,
               checkOutDate: data.checkOutDate,
               nights,
-              adults: data.adults,
-              children: data.children,
+              adults: roomGuests.length,
+              children: 0,
               totalAmount,
               dailyRate: roomType.basePrice,
               paidAmount: new P.Decimal(0),
@@ -255,7 +270,12 @@ export class PublicReservationService {
               contractAcceptedAt: new Date(),
               contractVersion: data.contractVersion,
               contractAcceptedIp: ip ?? null,
-              guests: { create: { guestId: guest.id, isPrimary: true } },
+              guests: {
+                create: roomGuests.map((g, idx) => ({
+                  guestId: g.id,
+                  isPrimary: idx === 0,
+                })),
+              },
             },
             select: { id: true, code: true, status: true },
           });
@@ -280,19 +300,20 @@ export class PublicReservationService {
           entityId: reservations[0]!.id,
           changes: {
             codes: reservations.map((r) => r.code),
-            rooms: data.roomsQuantity,
+            rooms: roomsNeeded,
+            guests: totalGuests,
             source: 'DIRECT',
             idempotencyKey: data.idempotencyKey,
           },
-          metadata: { guestEmail: guest.email, guestPhone: guest.phone },
+          metadata: { guestEmail: booker.email, guestPhone: booker.phone },
         },
         tx,
       );
 
-      const grandTotal = totalAmount.mul(data.roomsQuantity);
+      const grandTotal = totalAmount.mul(roomsNeeded);
       return {
         reservations,
-        guest,
+        guest: booker,
         grandTotal: grandTotal.toNumber(),
         depositAmount: grandTotal.mul(30).div(100).toNumber(),
       };

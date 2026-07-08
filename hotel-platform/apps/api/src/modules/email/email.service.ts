@@ -118,7 +118,9 @@ export class EmailService {
       });
 
       const first = rs[0];
-      const to = first?.primaryGuest?.email;
+      // O titular (com e-mail) é o primário do 1º quarto; mas por robustez
+      // pegamos o primeiro e-mail não-nulo entre as reservas do grupo.
+      const to = rs.map((r) => r.primaryGuest?.email).find(Boolean) ?? null;
       if (!first || !to) {
         this.logger.log(
           `Reservas [${reservationIds.join(', ')}] sem e-mail de hóspede — pulei o envio.`,
