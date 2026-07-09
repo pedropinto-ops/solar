@@ -113,10 +113,18 @@ export class AssistantService {
     const createdCodes: string[] = [];
 
     for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
+      // Prompt caching: o prefixo (ferramentas + system + histórico até o
+      // marcador) é recobrado a 10% do preço de input nas chamadas seguintes.
+      // O cache dura 5 min e renova a cada uso — cadência típica de chat.
+      this.stripCacheControl(conv.messages);
+      this.markCacheBreakpoint(conv.messages);
+
       const response = await client.messages.create({
         model: MODEL,
         max_tokens: 1024,
-        system,
+        system: [
+          { type: 'text', text: system, cache_control: { type: 'ephemeral' } },
+        ],
         tools: TOOLS,
         messages: conv.messages,
       });
@@ -176,7 +184,18 @@ export class AssistantService {
           checkOutDate: this.toDate(a.checkOutDate),
           guests: a.guests,
         });
-        return { content: JSON.stringify({ roomTypes }) };
+        // Só o que a IA usa na conversa — fotos/amenities/descrição/ids são
+        // ruído que ficaria no histórico sendo recobrado a cada mensagem.
+        const disponibilidade = roomTypes.map((rt) => ({
+          acomodacao: rt.name,
+          diariaPorAdulto: rt.dailyRate,
+          quartosLivres: rt.available,
+          quartosQueOGrupoOcupa: rt.roomsNeeded,
+          capacidadeMaxPorQuarto: rt.maxOccupancy,
+          estimativaTotalTodosAdultos: rt.totalAmount,
+          esgotado: rt.soldOut,
+        }));
+        return { content: JSON.stringify({ disponibilidade }) };
       }
 
       if (name === 'create_reservation') {
@@ -309,6 +328,31 @@ export class AssistantService {
       '',
       'IMPORTANTE: não há pagamento online — é sempre uma solicitação. Não prometa que a reserva está garantida. Se faltar algum dado, peça de forma simples. Se uma ferramenta retornar erro, explique com gentileza e peça a correção.',
     ].join('\n');
+  }
+
+  /**
+   * A API aceita no máx. 4 blocos com cache_control por request — remove os
+   * marcadores da rodada anterior antes de marcar o novo fim do histórico.
+   */
+  private stripCacheControl(messages: Anthropic.MessageParam[]): void {
+    for (const m of messages) {
+      if (!Array.isArray(m.content)) continue;
+      for (const b of m.content) {
+        delete (b as { cache_control?: unknown }).cache_control;
+      }
+    }
+  }
+
+  /** Marca o último bloco do histórico como ponto de cache. */
+  private markCacheBreakpoint(messages: Anthropic.MessageParam[]): void {
+    const last = messages[messages.length - 1];
+    if (!last) return;
+    if (typeof last.content === 'string') {
+      last.content = [{ type: 'text', text: last.content }];
+    }
+    const blocks = last.content as Array<{ cache_control?: unknown }>;
+    const block = blocks[blocks.length - 1];
+    if (block) block.cache_control = { type: 'ephemeral' };
   }
 
   private toDate(ymd: string): Date {
