@@ -20,9 +20,10 @@ import { createPublicReservationSchema } from '@hotel/shared/schemas';
  * Estado da conversa em memória (single-instance MVP). Reinício perde as
  * conversas em andamento — aceitável nesta fase.
  */
-// Sonnet: ótimo em tool use por uma fração do custo do Opus — adequado para
-// um assistente de reserva. (Trocável se precisar de mais capacidade.)
-const MODEL = 'claude-sonnet-4-6';
+// Modelo configurável via ASSISTANT_MODEL (Railway) — permite testar o Haiku
+// (custo ~3x menor) e voltar pro Sonnet sem deploy. Default: Sonnet, ótimo em
+// tool use por uma fração do custo do Opus.
+const DEFAULT_MODEL = 'claude-sonnet-4-6';
 const MAX_TOOL_ITERATIONS = 8;
 const CONTRACT_VERSION = 'assistente-ia-2026-07';
 const CONVERSATION_TTL_MS = 30 * 60 * 1000; // 30 min
@@ -46,6 +47,7 @@ export interface ChatResult {
 export class AssistantService {
   private readonly logger = new Logger(AssistantService.name);
   private readonly apiKey: string;
+  private readonly model: string;
   private readonly client: Anthropic | null;
   private readonly conversations = new Map<string, StoredConversation>();
 
@@ -57,7 +59,11 @@ export class AssistantService {
     private readonly publicReservation: PublicReservationService,
   ) {
     this.apiKey = this.config.get<string>('ANTHROPIC_API_KEY', '');
+    this.model = this.config.get<string>('ASSISTANT_MODEL', DEFAULT_MODEL);
     this.client = this.apiKey ? new Anthropic({ apiKey: this.apiKey }) : null;
+    if (this.client) {
+      this.logger.log(`Assistente de IA ligado — modelo: ${this.model}`);
+    }
     if (!this.client) {
       this.logger.warn(
         '⚠️  ANTHROPIC_API_KEY não configurado — assistente de IA desligado.',
@@ -120,7 +126,7 @@ export class AssistantService {
       this.markCacheBreakpoint(conv.messages);
 
       const response = await client.messages.create({
-        model: MODEL,
+        model: this.model,
         max_tokens: 1024,
         system: [
           { type: 'text', text: system, cache_control: { type: 'ephemeral' } },
