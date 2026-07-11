@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiFetch, setToken, ApiError } from '@/lib/api-client';
+import { homeFor } from '@/lib/permissions';
 import { Logo, Botanical } from '@/components/ui/logo';
 import { APP_VERSION } from '@/lib/version';
 
@@ -29,8 +30,7 @@ export default function LoginPage() {
         skipAuth: true,
       });
       setToken(data.token);
-      const dest = data.user.role === 'HOUSEKEEPER' ? '/minha-limpeza' : '/dashboard';
-      router.replace(dest);
+      router.replace(homeFor(data.user.role));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Erro ao entrar');
     } finally {

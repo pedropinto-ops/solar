@@ -5,6 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch, getToken, clearToken } from '@/lib/api-client';
+import { canAccess, homeFor } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
 import { Avatar } from '@/components/ui/avatar';
 import { Logo } from '@/components/ui/logo';
@@ -14,39 +15,19 @@ interface NavItem {
   href: string;
   label: string;
   icon: string; // SVG path simples ou emoji — para MVP, mantemos string
-  roles?: string[];
 }
 
+// Visibilidade é derivada de canAccess(role, href) — fonte única em permissions.ts.
 const NAV_ITEMS: NavItem[] = [
   { href: '/dashboard', label: 'Painel', icon: 'home' },
-  { href: '/painel', label: 'Quartos ao vivo', icon: 'grid', roles: ['ADMIN', 'MANAGER', 'RECEPTION'] },
-  { href: '/agenda', label: 'Agenda', icon: 'calendar', roles: ['ADMIN', 'MANAGER', 'RECEPTION'] },
+  { href: '/painel', label: 'Quartos ao vivo', icon: 'grid' },
+  { href: '/agenda', label: 'Agenda', icon: 'calendar' },
   { href: '/quartos', label: 'Quartos', icon: 'bed' },
-  { href: '/hospedes', label: 'Hóspedes', icon: 'users', roles: ['ADMIN', 'MANAGER', 'RECEPTION'] },
-  {
-    href: '/housekeeping',
-    label: 'Limpeza',
-    icon: 'sparkles',
-    roles: ['ADMIN', 'MANAGER', 'HOUSEKEEPING_SUPERVISOR'],
-  },
-  {
-    href: '/minha-limpeza',
-    label: 'Limpeza',
-    icon: 'sparkles',
-    roles: ['HOUSEKEEPER'],
-  },
-  {
-    href: '/almoxarifado',
-    label: 'Almoxarifado',
-    icon: 'box',
-    roles: ['ADMIN', 'MANAGER', 'HOUSEKEEPING_SUPERVISOR'],
-  },
-  {
-    href: '/relatorios',
-    label: 'Relatórios',
-    icon: 'chart',
-    roles: ['ADMIN', 'MANAGER'],
-  },
+  { href: '/hospedes', label: 'Hóspedes', icon: 'users' },
+  { href: '/housekeeping', label: 'Limpeza', icon: 'sparkles' },
+  { href: '/minha-limpeza', label: 'Limpeza', icon: 'sparkles' },
+  { href: '/almoxarifado', label: 'Almoxarifado', icon: 'box' },
+  { href: '/relatorios', label: 'Relatórios', icon: 'chart' },
 ];
 
 // Ícones inline (sem libs externas)
@@ -154,6 +135,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     enabled: ready,
   });
 
+  // Bloqueio por CARGO: se o usuário abrir por URL uma rota que seu cargo não
+  // pode, manda para a tela inicial dele (não basta esconder do menu).
+  const role = me?.user.role;
+  useEffect(() => {
+    if (role && !canAccess(role, pathname)) {
+      router.replace(homeFor(role));
+    }
+  }, [role, pathname, router]);
+
   function logout() {
     clearToken();
     router.replace('/login');
@@ -167,10 +157,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const role = me?.user.role;
-  const visibleNav = NAV_ITEMS.filter(
-    (item) => !item.roles || (role && item.roles.includes(role)),
-  );
+  const visibleNav = NAV_ITEMS.filter((item) => canAccess(role, item.href));
 
   return (
     <div className="min-h-screen flex bg-sand-50">

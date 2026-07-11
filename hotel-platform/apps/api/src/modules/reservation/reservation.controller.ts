@@ -35,9 +35,10 @@ const cancelSchema = z.object({
 export class ReservationController {
   constructor(private readonly reservationService: ReservationService) {}
 
-  // ---- Leitura ----
+  // ---- Leitura (restrita à operação de recepção; limpeza não vê reservas) ----
 
   @Get()
+  @Roles('ADMIN', 'MANAGER', 'RECEPTION')
   async list(
     @CurrentUser() user: AuthenticatedUser,
     @Query('status') status?: string,
@@ -57,11 +58,13 @@ export class ReservationController {
   }
 
   @Get('dashboard')
+  @Roles('ADMIN', 'MANAGER', 'RECEPTION')
   async dashboard(@CurrentUser() user: AuthenticatedUser) {
     return this.reservationService.dashboardCounts(user.propertyId);
   }
 
   @Get(':id')
+  @Roles('ADMIN', 'MANAGER', 'RECEPTION')
   async getById(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.reservationService.getById(user.propertyId, id);
   }

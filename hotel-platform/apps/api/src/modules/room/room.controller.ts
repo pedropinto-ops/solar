@@ -29,22 +29,29 @@ export class RoomController {
   ) {}
 
   @Get()
+  @Roles('ADMIN', 'MANAGER', 'RECEPTION', 'HOUSEKEEPING_SUPERVISOR')
   async list(@CurrentUser() user: AuthenticatedUser) {
     return this.roomService.listAll(user.propertyId);
   }
 
-  /** Painel de recepção — situação de todos os quartos (ocupados/livres/...). */
+  /**
+   * Quartos ao vivo — situação de todos os quartos (ocupados/livres/limpeza).
+   * Liberado também à governanta e camareira: sabem quais quartos saem hoje.
+   */
   @Get('board')
+  @Roles('ADMIN', 'MANAGER', 'RECEPTION', 'HOUSEKEEPING_SUPERVISOR', 'HOUSEKEEPER')
   async board(@CurrentUser() user: AuthenticatedUser) {
     return this.roomService.board(user.propertyId);
   }
 
   @Get('types')
+  @Roles('ADMIN', 'MANAGER', 'RECEPTION')
   async listTypes(@CurrentUser() user: AuthenticatedUser) {
     return this.roomTypeService.list(user.propertyId);
   }
 
   @Get('available')
+  @Roles('ADMIN', 'MANAGER', 'RECEPTION')
   async available(
     @CurrentUser() user: AuthenticatedUser,
     @Query('roomTypeId') roomTypeId: string,

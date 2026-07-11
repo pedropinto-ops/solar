@@ -1,6 +1,11 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { UserService } from './user.service.js';
-import { JwtAuthGuard, CurrentUser, AuthenticatedUser } from '../auth/auth.guards.js';
+import {
+  JwtAuthGuard,
+  Roles,
+  CurrentUser,
+  AuthenticatedUser,
+} from '../auth/auth.guards.js';
 
 @Controller('users')
 @UseGuards(JwtAuthGuard)
@@ -9,9 +14,10 @@ export class UserController {
 
   /**
    * GET /users?role=HOUSEKEEPER
-   * Lista usuários da propriedade. Útil para selecionar camareiras.
+   * Lista usuários da propriedade. Restrito à gestão (dados da equipe).
    */
   @Get()
+  @Roles('ADMIN', 'MANAGER')
   async list(
     @CurrentUser() user: AuthenticatedUser,
     @Query('role') role?: string,
