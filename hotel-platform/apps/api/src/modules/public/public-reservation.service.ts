@@ -9,7 +9,7 @@ import { PrismaService } from '../../common/prisma/prisma.service.js';
 import { AuditService } from '../../common/audit/audit.service.js';
 import { PaymentService } from '../payment/payment.service.js';
 import { EmailService } from '../email/email.service.js';
-import { allocateByCapacity } from '../room/room.service.js';
+import { selectRoomsByCapacity, ROOM_OCCUPYING_STATUSES } from '../room/room.service.js';
 import { generateReservationCode } from '../../common/utils/reservation-code.js';
 import type { Prisma } from '@prisma/client';
 import { Prisma as P } from '@prisma/client';
@@ -141,13 +141,9 @@ export class PublicReservationService {
           roomId: { in: roomIds },
           checkInDate: { lt: data.checkOutDate },
           checkOutDate: { gt: data.checkInDate },
-          OR: [
-            { status: { in: ['CONFIRMED', 'CHECKED_IN'] } },
-            {
-              status: 'PENDING',
-              holdExpiresAt: { gt: new Date() },
-            },
-          ],
+          // Confirmada, hospedada OU solicitação pendente já alocada — todas
+          // seguram o quarto físico no período.
+          status: { in: [...ROOM_OCCUPYING_STATUSES] },
         },
         select: { roomId: true },
         distinct: ['roomId'],
@@ -157,14 +153,12 @@ export class PublicReservationService {
       );
       const freeRooms = roomsOfType.filter((r) => !conflictingIds.has(r.id));
 
-      // Aloca quartos por CAPACIDADE real: menor quarto que caiba o grupo;
-      // se nenhum couber sozinho, combina. allocCaps = capacidade de cada
-      // quarto usado, na ordem em que os hóspedes serão distribuídos.
-      const allocCaps = allocateByCapacity(
-        freeRooms.map((r) => r.maxOccupancy),
-        totalGuests,
-      );
-      if (!allocCaps) {
+      // Aloca os QUARTOS CONCRETOS por capacidade real: menor quarto que caiba
+      // o grupo; se nenhum couber sozinho, combina. Cada quarto escolhido vira
+      // uma reserva com roomId já atribuído (alocação automática). O gestor pode
+      // remanejar depois via PATCH /reservations/:id/assign-room.
+      const chosenRooms = selectRoomsByCapacity(freeRooms, totalGuests);
+      if (!chosenRooms) {
         throw new ConflictException({
           errorCode: 'NOT_ENOUGH_ROOMS',
           title:
@@ -173,7 +167,7 @@ export class PublicReservationService {
               : `Não há quartos suficientes para acomodar ${totalGuests} hóspedes neste período.`,
         });
       }
-      const roomsNeeded = allocCaps.length;
+      const roomsNeeded = chosenRooms.length;
 
       // 3. Cria/recupera cada hóspede (dedupe por documento). O titular
       //    carrega o contato (e-mail/telefone); acompanhantes só nome+doc.
@@ -266,7 +260,8 @@ export class PublicReservationService {
 
       let offset = 0;
       for (let i = 0; i < roomsNeeded; i++) {
-        const roomCap = allocCaps[i]!;
+        const chosenRoom = chosenRooms[i]!;
+        const roomCap = chosenRoom.maxOccupancy;
         const slice = partyGuests.slice(offset, offset + roomCap);
         // Diária do quarto = soma das diárias (por idade) dos seus ocupantes.
         const sliceRates = partyRates.slice(offset, offset + roomCap);
@@ -287,7 +282,8 @@ export class PublicReservationService {
               code,
               primaryGuestId: roomGuests[0]!.id,
               roomTypeId: data.roomTypeId,
-              // roomId: null — alocação no check-in
+              // Quarto físico alocado automaticamente (o gestor pode trocar).
+              roomId: chosenRoom.id,
               checkInDate: data.checkInDate,
               checkOutDate: data.checkOutDate,
               nights,

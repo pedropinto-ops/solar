@@ -9,30 +9,54 @@ export interface AvailabilityParams {
 }
 
 /**
- * Aloca quartos para um grupo com base na capacidade REAL de cada quarto livre.
- * Estratégia: o MENOR quarto único que caiba o grupo (pra não gastar um quarto
- * grande com um casal); se nenhum quarto único couber, combina os maiores
- * primeiro. Retorna a lista de capacidades usadas (nessa ordem), ou null se o
- * grupo não couber nos quartos disponíveis.
+ * Status de reserva que OCUPAM um quarto físico num período. Uma solicitação
+ * PENDING já alocada segura o quarto até ser confirmada ou cancelada — por isso
+ * entra aqui junto de CONFIRMED/CHECKED_IN. (Reservas PENDING sem quarto físico
+ * não aparecem nas consultas porque todas filtram por roomId não-nulo.)
+ * Fonte única — usada em availability(), listAvailable() e na criação pública.
+ */
+export const ROOM_OCCUPYING_STATUSES = ['CONFIRMED', 'CHECKED_IN', 'PENDING'] as const;
+
+/**
+ * Escolhe os quartos concretos para um grupo, por capacidade REAL de cada quarto
+ * livre. Estratégia: o MENOR quarto único que caiba o grupo (pra não gastar um
+ * quarto grande com um casal); se nenhum quarto único couber, combina os maiores
+ * primeiro. Retorna os quartos escolhidos NA ORDEM em que os hóspedes serão
+ * distribuídos (titular no primeiro), ou null se o grupo não couber.
+ */
+export function selectRoomsByCapacity<T extends { maxOccupancy: number }>(
+  rooms: T[],
+  guests: number,
+): T[] | null {
+  if (guests <= 0 || rooms.length === 0) return null;
+  const asc = [...rooms].sort((a, b) => a.maxOccupancy - b.maxOccupancy);
+  for (const r of asc) {
+    if (r.maxOccupancy >= guests) return [r]; // menor quarto único que cabe
+  }
+  const desc = [...rooms].sort((a, b) => b.maxOccupancy - a.maxOccupancy);
+  const used: T[] = [];
+  let remaining = guests;
+  for (const r of desc) {
+    used.push(r);
+    remaining -= r.maxOccupancy;
+    if (remaining <= 0) return used;
+  }
+  return null; // capacidade total insuficiente
+}
+
+/**
+ * Variante que trabalha só com capacidades (números). Mantida para a consulta
+ * de disponibilidade pública, que não precisa dos ids dos quartos.
  */
 export function allocateByCapacity(
   freeCaps: number[],
   guests: number,
 ): number[] | null {
-  if (guests <= 0 || freeCaps.length === 0) return null;
-  const asc = [...freeCaps].sort((a, b) => a - b);
-  for (const c of asc) {
-    if (c >= guests) return [c]; // menor quarto único que cabe
-  }
-  const desc = [...freeCaps].sort((a, b) => b - a);
-  const used: number[] = [];
-  let remaining = guests;
-  for (const c of desc) {
-    used.push(c);
-    remaining -= c;
-    if (remaining <= 0) return used;
-  }
-  return null; // capacidade total insuficiente
+  const chosen = selectRoomsByCapacity(
+    freeCaps.map((c) => ({ maxOccupancy: c })),
+    guests,
+  );
+  return chosen ? chosen.map((r) => r.maxOccupancy) : null;
 }
 
 @Injectable()
@@ -100,13 +124,9 @@ export class RoomService {
             roomId: { in: roomIds },
             checkInDate: { lt: checkOutDate },
             checkOutDate: { gt: checkInDate },
-            OR: [
-              { status: { in: ['CONFIRMED', 'CHECKED_IN'] } },
-              {
-                status: 'PENDING',
-                holdExpiresAt: { gt: new Date() },
-              },
-            ],
+            // Quarto ocupado = confirmada, hospedada OU solicitação pendente já
+            // alocada (roomId garantido pelo filtro roomId:{in:roomIds}).
+            status: { in: [...ROOM_OCCUPYING_STATUSES] },
           },
           select: { roomId: true },
           distinct: ['roomId'],
@@ -174,7 +194,7 @@ export class RoomService {
           none: {
             checkInDate: { lt: checkOutDate },
             checkOutDate: { gt: checkInDate },
-            status: { in: ['CONFIRMED', 'CHECKED_IN'] },
+            status: { in: [...ROOM_OCCUPYING_STATUSES] },
           },
         },
       },

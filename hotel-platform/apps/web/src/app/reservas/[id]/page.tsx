@@ -226,7 +226,19 @@ export default function ReservationPage({ params }: { params: { id: string } }) 
                       {res.room.number}
                     </div>
                   ) : (
-                    <RoomPicker reservationId={res.id} roomTypeId={res.roomType.id} checkIn={res.checkInDate} checkOut={res.checkOutDate} onError={setError} />
+                    <div className="text-sm text-amber-700">Não alocado</div>
+                  )}
+                  {/* Alocação automática na reserva; o gestor pode remanejar
+                      enquanto a reserva não passou do check-in. */}
+                  {!['CHECKED_IN', 'CHECKED_OUT', 'CANCELLED', 'NO_SHOW'].includes(res.status) && (
+                    <details className="mt-2">
+                      <summary className="text-xs text-teal-700 cursor-pointer select-none">
+                        {res.room ? 'Trocar quarto' : 'Alocar quarto'}
+                      </summary>
+                      <div className="mt-1">
+                        <RoomPicker reservationId={res.id} roomTypeId={res.roomType.id} checkIn={res.checkInDate} checkOut={res.checkOutDate} onError={setError} />
+                      </div>
+                    </details>
                   )}
                 </div>
               </div>
