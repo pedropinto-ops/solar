@@ -28,6 +28,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/minha-limpeza', label: 'Limpeza', icon: 'sparkles' },
   { href: '/almoxarifado', label: 'Almoxarifado', icon: 'box' },
   { href: '/relatorios', label: 'Relatórios', icon: 'chart' },
+  { href: '/usuarios', label: 'Usuários', icon: 'users' },
 ];
 
 // Ícones inline (sem libs externas)

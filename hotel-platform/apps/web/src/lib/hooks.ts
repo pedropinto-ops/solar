@@ -188,6 +188,64 @@ export function useStaff(role?: string) {
   });
 }
 
+// ---- Gestão de usuários (ADMIN/MANAGER) ----
+
+export interface ManagedUser {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  role: string;
+  active: boolean;
+  lastLoginAt: string | null;
+  createdAt: string;
+}
+
+export function useUsersManagement() {
+  return useQuery({
+    queryKey: ['users', 'management'],
+    queryFn: () => apiFetch<ManagedUser[]>('/users?scope=all'),
+  });
+}
+
+export function useCreateUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      name: string;
+      email: string;
+      phone?: string;
+      role: string;
+      password: string;
+    }) => apiFetch('/users', { method: 'POST', body }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+  });
+}
+
+export function useUpdateUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      ...body
+    }: {
+      id: string;
+      name?: string;
+      phone?: string;
+      role?: string;
+      active?: boolean;
+    }) => apiFetch(`/users/${id}`, { method: 'PATCH', body }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+  });
+}
+
+export function useResetPassword() {
+  return useMutation({
+    mutationFn: ({ id, password }: { id: string; password: string }) =>
+      apiFetch(`/users/${id}/password`, { method: 'PATCH', body: { password } }),
+  });
+}
+
 // =========================================
 //  Mutations
 // =========================================
