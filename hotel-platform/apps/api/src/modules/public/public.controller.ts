@@ -36,8 +36,22 @@ export class PublicController {
       checkInTime: property.checkInTime,
       checkOutTime: property.checkOutTime,
       cancellationPolicy: property.cancellationPolicy,
+      // Endereço (landing)
+      addressStreet: property.addressStreet,
+      addressNumber: property.addressNumber,
+      addressNeighborhood: property.addressNeighborhood,
       addressCity: property.addressCity,
       addressState: property.addressState,
+      addressZip: property.addressZip,
+      // Contato
+      phone: property.phone,
+      website: property.website,
+      instagramUrl: property.instagramUrl,
+      // Localização (mapa) + galeria da landing
+      latitude: property.latitude,
+      longitude: property.longitude,
+      googleMapsUrl: property.googleMapsUrl,
+      galleryPhotos: property.galleryPhotos ?? [],
     };
   }
 

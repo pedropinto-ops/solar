@@ -70,6 +70,14 @@ model Property {
   primaryColor  String?
   bookingSlug   String  @unique                   // URL: /reservar/{slug}
 
+  // ---- LANDING PÚBLICA (site institucional) ----
+  latitude       Float?                            // coordenada p/ o mapa
+  longitude      Float?
+  googleMapsUrl  String?                           // link "Como chegar" (maps.app.goo.gl/...)
+  instagramUrl   String?
+  // Galeria da landing: array JSON de { url, category: 'hotel'|'quarto'|'cafe', caption?, sortOrder? }
+  galleryPhotos  Json?
+
   // ---- CONFIGURAÇÃO FISCAL (NFS-e) ----
   fiscalEnabled        Boolean  @default(false)
   fiscalProvider       String?                    // "focus_nfe"
