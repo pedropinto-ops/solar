@@ -5,6 +5,16 @@ const nextConfig = {
   experimental: {
     typedRoutes: false,
   },
+  // Link curto de divulgação (Google, Instagram, WhatsApp) -> fluxo de reserva.
+  async redirects() {
+    return [
+      {
+        source: '/reservar',
+        destination: '/reservar/solar-irara',
+        permanent: false,
+      },
+    ];
+  },
 };
 
 module.exports = nextConfig;
