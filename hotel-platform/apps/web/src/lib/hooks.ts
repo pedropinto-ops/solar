@@ -670,9 +670,26 @@ export interface ReportSummary {
   roomNightsSold: number;
   occupancyPercent: number;
   roomRevenue: number;
+  consumptionRevenue: number;
+  totalRevenue: number;
   adr: number;
   revpar: number;
   reservationsInPeriod: number;
+  avgStayNights: number;
+  ticketMedio: number;
+  receivedInPeriod: number;
+  outstanding: number;
+  previous: {
+    roomRevenue: number;
+    totalRevenue: number;
+    consumptionRevenue: number;
+    occupancyPercent: number;
+    adr: number;
+    revpar: number;
+    roomNightsSold: number;
+    reservationsInPeriod: number;
+    receivedInPeriod: number;
+  };
   bySource: Array<{
     source: string;
     reservations: number;
@@ -687,6 +704,18 @@ export interface ReportSummary {
   }>;
 }
 
+export interface ReportForecast {
+  generatedAt: string;
+  totalRooms: number;
+  horizons: Array<{
+    days: number;
+    roomNights: number;
+    revenue: number;
+    reservations: number;
+    occupancyPercent: number;
+  }>;
+}
+
 export function useReportSummary(start: string, end: string) {
   return useQuery({
     queryKey: ['reports', 'summary', start, end],
@@ -695,6 +724,13 @@ export function useReportSummary(start: string, end: string) {
         `/reports/summary?start=${start}&end=${end}`,
       ),
     enabled: Boolean(start && end),
+  });
+}
+
+export function useReportForecast() {
+  return useQuery({
+    queryKey: ['reports', 'forecast'],
+    queryFn: () => apiFetch<ReportForecast>('/reports/forecast'),
   });
 }
 

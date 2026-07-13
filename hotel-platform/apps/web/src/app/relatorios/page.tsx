@@ -3,8 +3,8 @@
 import { useMemo, useState } from 'react';
 import { AppShell } from '@/components/app-shell';
 import { PageHeader } from '@/components/ui/page-header';
-import { Card, KpiCard, EmptyState } from '@/components/ui/primitives';
-import { useReportSummary } from '@/lib/hooks';
+import { Card, KpiCard, Button, EmptyState } from '@/components/ui/primitives';
+import { useReportSummary, useReportForecast } from '@/lib/hooks';
 import { fmtCurrency, fmtDate, toDateInput, addDays } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
@@ -39,14 +39,22 @@ function presets() {
   ];
 }
 
+/** Variação % vs período anterior; undefined quando não há base de comparação. */
+function pctDelta(cur: number, prev: number): number | undefined {
+  if (!prev || prev <= 0) return undefined;
+  return Math.round(((cur - prev) / prev) * 100);
+}
+
 export default function RelatoriosPage() {
   const opts = useMemo(presets, []);
   const [range, setRange] = useState({
     start: toDateInput(opts[0].start),
     end: toDateInput(opts[0].end),
   });
+  const [copied, setCopied] = useState(false);
 
   const { data, isLoading, error } = useReportSummary(range.start, range.end);
+  const { data: forecast } = useReportForecast();
 
   const maxOcc = useMemo(
     () => Math.max(1, ...(data?.byDay ?? []).map((d) => d.occupiedRooms)),
@@ -54,13 +62,64 @@ export default function RelatoriosPage() {
   );
   const showChart = (data?.byDay.length ?? 0) > 0 && (data?.byDay.length ?? 0) <= 62;
 
+  function buildSummaryText(): string {
+    if (!data) return '';
+    const dRev = pctDelta(data.totalRevenue, data.previous.totalRevenue);
+    const dOcc = pctDelta(data.occupancyPercent, data.previous.occupancyPercent);
+    const l = (n?: number) => (n === undefined ? '' : ` (${n >= 0 ? '+' : ''}${n}% vs anterior)`);
+    const f7 = forecast?.horizons.find((h) => h.days === 7);
+    return [
+      `📊 Solar Irará — Relatório`,
+      `${fmtDate(data.start)} a ${fmtDate(data.end)}`,
+      ``,
+      `Receita total: ${fmtCurrency(data.totalRevenue)}${l(dRev)}`,
+      `  • Diárias: ${fmtCurrency(data.roomRevenue)}`,
+      `  • Consumos: ${fmtCurrency(data.consumptionRevenue)}`,
+      `Ocupação: ${data.occupancyPercent}%${l(dOcc)}`,
+      `Diária média (ADR): ${fmtCurrency(data.adr)}`,
+      `Recebido no período: ${fmtCurrency(data.receivedInPeriod)}`,
+      `A receber (saldo aberto): ${fmtCurrency(data.outstanding)}`,
+      f7 ? `\nPróximos 7 dias: ${f7.occupancyPercent}% ocupação · ${fmtCurrency(f7.revenue)} previstos` : ``,
+    ].filter(Boolean).join('\n');
+  }
+
+  async function doShare() {
+    const text = buildSummaryText();
+    try {
+      if (typeof navigator !== 'undefined' && navigator.share) {
+        await navigator.share({ title: 'Relatório Solar Irará', text });
+      } else if (typeof navigator !== 'undefined' && navigator.clipboard) {
+        await navigator.clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2500);
+      }
+    } catch {
+      /* usuário cancelou o compartilhamento — silencioso */
+    }
+  }
+
   return (
     <AppShell>
-      <PageHeader title="Relatórios" subtitle="Desempenho do hotel por período" />
+      <PageHeader
+        title="Relatórios"
+        subtitle="Desempenho do hotel por período"
+        actions={
+          data ? (
+            <div className="flex gap-2 print:hidden">
+              <Button size="sm" variant="secondary" onClick={doShare}>
+                {copied ? 'Copiado!' : 'Compartilhar'}
+              </Button>
+              <Button size="sm" variant="secondary" onClick={() => window.print()}>
+                PDF
+              </Button>
+            </div>
+          ) : undefined
+        }
+      />
 
       <div className="px-5 md:px-8 py-5 md:py-6 max-w-5xl space-y-5">
         {/* Seletor de período */}
-        <Card className="p-4 space-y-3">
+        <Card className="p-4 space-y-3 print:hidden">
           <div className="flex flex-wrap gap-2">
             {opts.map((p) => {
               const active =
@@ -115,30 +174,82 @@ export default function RelatoriosPage() {
 
         {data && (
           <>
-            {/* KPIs */}
+            <div className="hidden print:block text-sm text-ink-500">
+              Solar Irará · {fmtDate(data.start)} a {fmtDate(data.end)}
+            </div>
+
+            {/* KPIs principais com variação vs período anterior */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <KpiCard
+                label="Receita total"
+                value={fmtCurrency(data.totalRevenue)}
+                sublabel={`diárias + consumos`}
+                trend={pctDelta(data.totalRevenue, data.previous.totalRevenue)}
+                highlight
+              />
               <KpiCard
                 label="Ocupação"
                 value={`${data.occupancyPercent}%`}
                 sublabel={`${data.roomNightsSold}/${data.availableRoomNights} diárias`}
-                highlight={data.occupancyPercent >= 70}
+                trend={pctDelta(data.occupancyPercent, data.previous.occupancyPercent)}
               />
-              <KpiCard label="Receita (diárias)" value={fmtCurrency(data.roomRevenue)} />
               <KpiCard
                 label="Diária média (ADR)"
                 value={fmtCurrency(data.adr)}
-                sublabel="por quarto ocupado"
+                trend={pctDelta(data.adr, data.previous.adr)}
               />
               <KpiCard
                 label="RevPAR"
                 value={fmtCurrency(data.revpar)}
                 sublabel="receita ÷ quartos disp."
+                trend={pctDelta(data.revpar, data.previous.revpar)}
               />
             </div>
 
+            {/* Receita detalhada + caixa */}
+            <Card className="p-4">
+              <h2 className="font-serif-display text-lg text-ink-950 mb-3">Receita e caixa</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                <Row label="Diárias" value={fmtCurrency(data.roomRevenue)} />
+                <Row label="Consumos (frigobar, taxas)" value={fmtCurrency(data.consumptionRevenue)} />
+                <Row label="Receita total" value={fmtCurrency(data.totalRevenue)} strong />
+                <Row label="Ticket médio / reserva" value={fmtCurrency(data.ticketMedio)} />
+                <Row label="Recebido no período" value={fmtCurrency(data.receivedInPeriod)} accent="teal" />
+                <Row label="A receber (saldo aberto)" value={fmtCurrency(data.outstanding)} accent="amber" />
+              </div>
+            </Card>
+
+            {/* Previsão */}
+            {forecast && (
+              <Card className="p-4">
+                <h2 className="font-serif-display text-lg text-ink-950 mb-1">
+                  Previsão (reservas já confirmadas)
+                </h2>
+                <p className="text-xs text-ink-500 mb-3">A partir de hoje · {forecast.totalRooms} quartos</p>
+                <div className="grid grid-cols-2 gap-3">
+                  {forecast.horizons.map((h) => (
+                    <div key={h.days} className="rounded-xl border border-sand-200 p-4 bg-sand-50">
+                      <div className="text-xs uppercase tracking-widest text-ink-500">
+                        Próximos {h.days} dias
+                      </div>
+                      <div className="font-serif-display text-2xl text-ink-950 mt-1">
+                        {h.occupancyPercent}%
+                      </div>
+                      <div className="text-xs text-ink-500">ocupação prevista</div>
+                      <div className="mt-2 text-sm text-ink-700">
+                        {fmtCurrency(h.revenue)} <span className="text-ink-500">previstos</span>
+                      </div>
+                      <div className="text-xs text-ink-500">{h.reservations} reserva{h.reservations !== 1 ? 's' : ''}</div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
+
             <div className="text-sm text-ink-500">
-              {data.days} dia{data.days > 1 ? 's' : ''} · {data.totalRooms} quartos ·{' '}
-              {data.reservationsInPeriod} reserva{data.reservationsInPeriod !== 1 ? 's' : ''} no período
+              {data.days} dia{data.days > 1 ? 's' : ''} · {data.reservationsInPeriod} reserva
+              {data.reservationsInPeriod !== 1 ? 's' : ''} · estadia média {data.avgStayNights} noite
+              {data.avgStayNights !== 1 ? 's' : ''}
             </div>
 
             {/* Curva diária de ocupação */}
@@ -162,40 +273,76 @@ export default function RelatoriosPage() {
               </Card>
             )}
 
-            {/* Por origem */}
+            {/* Por origem — barras (mobile-friendly) */}
             <Card className="p-4">
               <h2 className="font-serif-display text-lg text-ink-950 mb-3">Por origem da reserva</h2>
               {data.bySource.length === 0 ? (
                 <EmptyState title="Sem reservas no período" description="Ajuste as datas acima." />
               ) : (
-                <div className="divide-y divide-sand-200">
-                  <div className="grid grid-cols-4 gap-2 text-xs text-ink-500 pb-2">
-                    <span>Origem</span>
-                    <span className="text-right">Reservas</span>
-                    <span className="text-right">Diárias</span>
-                    <span className="text-right">Receita</span>
-                  </div>
-                  {data.bySource.map((s) => (
-                    <div key={s.source} className="grid grid-cols-4 gap-2 text-sm py-2">
-                      <span className="text-ink-950">{SOURCE_LABEL[s.source] ?? s.source}</span>
-                      <span className="text-right text-ink-700">{s.reservations}</span>
-                      <span className="text-right text-ink-700">{s.roomNights}</span>
-                      <span className="text-right font-medium text-ink-950">
-                        {fmtCurrency(s.revenue)}
-                      </span>
-                    </div>
-                  ))}
+                <div className="space-y-3">
+                  {data.bySource.map((s) => {
+                    const maxRev = Math.max(...data.bySource.map((x) => x.revenue), 1);
+                    return (
+                      <div key={s.source}>
+                        <div className="flex justify-between items-baseline text-sm">
+                          <span className="text-ink-950 font-medium">
+                            {SOURCE_LABEL[s.source] ?? s.source}
+                          </span>
+                          <span className="font-medium text-ink-950">{fmtCurrency(s.revenue)}</span>
+                        </div>
+                        <div className="h-2 rounded-full bg-sand-100 mt-1 overflow-hidden">
+                          <div
+                            className="h-full bg-teal-700 rounded-full"
+                            style={{ width: `${(s.revenue / maxRev) * 100}%` }}
+                          />
+                        </div>
+                        <div className="text-xs text-ink-500 mt-0.5">
+                          {s.reservations} reserva{s.reservations !== 1 ? 's' : ''} · {s.roomNights} diárias
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </Card>
 
             <p className="text-xs text-ink-500">
-              Receita reconhecida por noite dentro do período (competência). Considera reservas
-              confirmadas, hospedadas e finalizadas.
+              Diárias reconhecidas por noite dentro do período (competência). Consumos pela data do
+              lançamento. "Recebido" = pagamentos confirmados; "a receber" = saldo em aberto das
+              reservas ativas. Considera reservas confirmadas, hospedadas e finalizadas.
             </p>
           </>
         )}
       </div>
     </AppShell>
+  );
+}
+
+function Row({
+  label,
+  value,
+  strong,
+  accent,
+}: {
+  label: string;
+  value: string;
+  strong?: boolean;
+  accent?: 'teal' | 'amber';
+}) {
+  return (
+    <div className="flex justify-between items-baseline py-1 border-b border-sand-100">
+      <span className="text-ink-500">{label}</span>
+      <span
+        className={cn(
+          'font-medium nums',
+          strong && 'text-base text-ink-950',
+          accent === 'teal' && 'text-teal-700',
+          accent === 'amber' && 'text-amber-700',
+          !strong && !accent && 'text-ink-950',
+        )}
+      >
+        {value}
+      </span>
+    </div>
   );
 }

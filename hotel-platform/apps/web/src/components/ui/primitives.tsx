@@ -175,7 +175,7 @@ export function KpiCard({ label, value, sublabel, trend, highlight, className }:
           <span aria-hidden="true">{trend >= 0 ? '↑' : '↓'}</span>
           <span>
             {trend >= 0 ? '+' : ''}
-            {trend}% vs semana anterior
+            {trend}% vs período anterior
           </span>
         </div>
       )}

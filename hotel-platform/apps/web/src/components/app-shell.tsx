@@ -163,7 +163,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen flex bg-sand-50">
       {/* Sidebar desktop (md+) */}
-      <aside className="hidden md:flex w-60 shrink-0 bg-cream border-r border-sand-200 flex-col">
+      <aside className="hidden md:flex w-60 shrink-0 bg-cream border-r border-sand-200 flex-col print:hidden">
         <div className="px-5 py-6 border-b border-sand-200 flex justify-center">
           <Logo className="w-24 h-auto" />
         </div>
@@ -231,7 +231,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Bottom nav mobile (md-) */}
       <nav
-        className="md:hidden fixed bottom-0 left-0 right-0 bg-cream border-t border-sand-200 flex safe-area-bottom z-30"
+        className="md:hidden fixed bottom-0 left-0 right-0 bg-cream border-t border-sand-200 flex safe-area-bottom z-30 print:hidden"
         style={{ minHeight: 64 }}
         aria-label="Navegação principal"
       >

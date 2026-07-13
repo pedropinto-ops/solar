@@ -30,4 +30,11 @@ export class ReportController {
       end: query.end,
     });
   }
+
+  /** Previsão: ocupação e receita já confirmadas para os próximos dias. */
+  @Get('forecast')
+  @Roles('ADMIN', 'MANAGER')
+  async forecast(@CurrentUser() user: AuthenticatedUser) {
+    return this.report.forecast({ propertyId: user.propertyId });
+  }
 }
