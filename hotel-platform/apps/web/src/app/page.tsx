@@ -143,7 +143,7 @@ export default function HomePage() {
                 "Como chegar" abaixo abre a rota no Google Maps. */}
             <iframe
               title="Mapa do Solar Irará Hotel"
-              src={`https://www.openstreetmap.org/export/embed.html?bbox=${prop!.longitude! - 0.013}%2C${prop!.latitude! - 0.009}%2C${prop!.longitude! + 0.013}%2C${prop!.latitude! + 0.009}&layer=mapnik&marker=${prop!.latitude}%2C${prop!.longitude}`}
+              src={`https://www.openstreetmap.org/export/embed.html?bbox=${prop!.longitude! - 0.028}%2C${prop!.latitude! - 0.008}%2C${prop!.longitude! + 0.028}%2C${prop!.latitude! + 0.008}&layer=mapnik&marker=${prop!.latitude}%2C${prop!.longitude}`}
               className="w-full h-64 sm:h-80 border-0"
               loading="lazy"
             />
