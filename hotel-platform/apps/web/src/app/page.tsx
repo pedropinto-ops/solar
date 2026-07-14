@@ -138,12 +138,14 @@ export default function HomePage() {
         <section className="relative z-10 px-5 sm:px-8 pb-10 max-w-5xl mx-auto w-full">
           <h2 className="font-serif-display text-xl sm:text-2xl text-ink-950 mb-3">Onde estamos</h2>
           <div className="rounded-xl overflow-hidden border border-sand-200">
+            {/* OpenStreetMap embed: renderiza sem chave de API e sem bloqueio de
+                iframe (o embed do Google exige chave/é bloqueado). O botão
+                "Como chegar" abaixo abre a rota no Google Maps. */}
             <iframe
               title="Mapa do Solar Irará Hotel"
-              src={`https://maps.google.com/maps?q=${prop!.latitude},${prop!.longitude}&z=16&hl=pt&output=embed`}
+              src={`https://www.openstreetmap.org/export/embed.html?bbox=${prop!.longitude! - 0.013}%2C${prop!.latitude! - 0.009}%2C${prop!.longitude! + 0.013}%2C${prop!.latitude! + 0.009}&layer=mapnik&marker=${prop!.latitude}%2C${prop!.longitude}`}
               className="w-full h-64 sm:h-80 border-0"
               loading="lazy"
-              referrerPolicy="no-referrer-when-downgrade"
             />
           </div>
           <div className="flex items-center justify-between gap-3 mt-3">
