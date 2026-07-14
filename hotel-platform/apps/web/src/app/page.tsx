@@ -56,16 +56,26 @@ export default function HomePage() {
     enabled: ready,
   });
 
-  // O mapa OSM (Leaflet) mede o tamanho ao carregar; se o layout ainda estava
-  // assentando, renderiza estreito. Recarrega o iframe uma vez, já com a
-  // largura final, para o mapa preencher o container.
+  // O mapa OSM (Leaflet) mede o tamanho quando carrega. Com loading=lazy ele
+  // só carrega ao entrar na tela — então, quando isso acontece, recarregamos
+  // o iframe uma vez para o mapa medir a largura final e preencher o container.
   useEffect(() => {
-    if (prop?.latitude == null) return;
-    const t = setTimeout(() => {
-      const f = mapRef.current;
-      if (f) f.src = f.src;
-    }, 700);
-    return () => clearTimeout(t);
+    const f = mapRef.current;
+    if (!f || prop?.latitude == null) return;
+    let done = false;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && !done) {
+          done = true;
+          setTimeout(() => {
+            if (mapRef.current) mapRef.current.src = mapRef.current.src;
+          }, 350);
+        }
+      },
+      { threshold: 0.1 },
+    );
+    obs.observe(f);
+    return () => obs.disconnect();
   }, [prop?.latitude, prop?.longitude]);
 
   if (!ready) {
