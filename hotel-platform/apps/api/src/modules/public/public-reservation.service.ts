@@ -10,19 +10,13 @@ import { AuditService } from '../../common/audit/audit.service.js';
 import { PaymentService } from '../payment/payment.service.js';
 import { EmailService } from '../email/email.service.js';
 import { selectRoomsByCapacity, ROOM_OCCUPYING_STATUSES } from '../room/room.service.js';
+import { PricingService } from '../pricing/pricing.service.js';
 import { generateReservationCode } from '../../common/utils/reservation-code.js';
 import type { Prisma } from '@prisma/client';
 import { Prisma as P } from '@prisma/client';
 
-/**
- * Política de preço por idade (Modelo A — diária por pessoa):
- *   0–8 anos  → grátis
- *   9–15 anos → taxa fixa/dia
- *   16+ anos  → diária integral (basePrice da categoria)
- */
-const CHILD_FREE_MAX_AGE = 8;
-const CHILD_FEE_MAX_AGE = 15;
-const CHILD_DAILY_FEE = 50;
+// Política de preço por idade e tarifas por data ficam no PricingService
+// (fonte única). Este serviço apenas cota e grava.
 
 /**
  * Encapsula o Fluxo 1 inteiro: validação de disponibilidade → criação
@@ -52,6 +46,7 @@ export class PublicReservationService {
     private readonly audit: AuditService,
     private readonly paymentService: PaymentService,
     private readonly email: EmailService,
+    private readonly pricing: PricingService,
   ) {}
 
   async createReservation(params: {
@@ -236,20 +231,19 @@ export class PublicReservationService {
         (data.checkOutDate.getTime() - data.checkInDate.getTime()) /
           (1000 * 60 * 60 * 24),
       );
-      // Diária POR PESSOA por idade. Titular = adulto (diária integral).
-      const adultRate = roomType.basePrice;
-      const childFee = new P.Decimal(CHILD_DAILY_FEE);
-      const rateForAge = (age: number) =>
-        age <= CHILD_FREE_MAX_AGE
-          ? new P.Decimal(0)
-          : age <= CHILD_FEE_MAX_AGE
-            ? childFee
-            : adultRate;
-      // Alinha com partyGuests = [titular, ...acompanhantes].
-      const partyRates: P.Decimal[] = [
-        adultRate,
-        ...data.companions.map((c) => rateForAge(c.age)),
-      ];
+      // Preço via COTADOR CENTRAL (aplica tarifas por data, se houver regras;
+      // sem regras, usa basePrice → idêntico ao comportamento anterior).
+      // ages alinha com partyGuests = [titular, ...acompanhantes]; titular=adulto.
+      const quote = await this.pricing.quote({
+        propertyId,
+        roomTypeId: data.roomTypeId,
+        basePrice: Number(roomType.basePrice),
+        checkIn: data.checkInDate,
+        checkOut: data.checkOutDate,
+        ages: [30, ...data.companions.map((c) => c.age)],
+      });
+      // Total por pessoa ao longo de todas as noites (ordem de partyGuests).
+      const partyTotals = quote.perPerson;
 
       // 5+6. Cria uma reserva por quarto alocado, distribuindo os hóspedes
       //      até a capacidade REAL de cada quarto (allocCaps). Tudo na mesma
@@ -263,15 +257,14 @@ export class PublicReservationService {
         const chosenRoom = chosenRooms[i]!;
         const roomCap = chosenRoom.maxOccupancy;
         const slice = partyGuests.slice(offset, offset + roomCap);
-        // Diária do quarto = soma das diárias (por idade) dos seus ocupantes.
-        const sliceRates = partyRates.slice(offset, offset + roomCap);
+        // Total do quarto = soma dos totais (por pessoa) dos seus ocupantes.
+        const sliceTotals = partyTotals.slice(offset, offset + roomCap);
         offset += roomCap;
         const roomGuests = slice.length > 0 ? slice : [booker];
-        const roomDaily = sliceRates.reduce(
-          (s, r) => s.add(r),
-          new P.Decimal(0),
-        );
-        const roomTotal = roomDaily.mul(nights);
+        const roomTotalNum = sliceTotals.reduce((s, r) => s + r, 0);
+        const roomTotal = new P.Decimal(roomTotalNum);
+        // dailyRate = média por noite (a diária pode variar por data).
+        const roomDaily = new P.Decimal(nights > 0 ? roomTotalNum / nights : 0);
         // Código gerado dentro do loop: a contagem enxerga as reservas já
         // criadas nesta mesma transação, então incrementa corretamente.
         const code = await generateReservationCode(tx, propertyId);
@@ -343,14 +336,12 @@ export class PublicReservationService {
         tx,
       );
 
-      const grandTotal = partyRates
-        .reduce((s, r) => s.add(r), new P.Decimal(0))
-        .mul(nights);
+      const grandTotal = quote.total;
       return {
         reservations,
         guest: booker,
-        grandTotal: grandTotal.toNumber(),
-        depositAmount: grandTotal.mul(30).div(100).toNumber(),
+        grandTotal,
+        depositAmount: Math.round(grandTotal * 30) / 100,
       };
     });
 

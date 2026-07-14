@@ -111,6 +111,7 @@ model Property {
   chargeItems   ChargeItem[]
   invoices      Invoice[]
   fiscalDocuments FiscalDocument[]
+  ratePeriods   RatePeriod[]
 
   @@map("properties")
 }
@@ -1051,4 +1052,41 @@ enum FiscalDocStatus {
   CANCELLED     // cancelada
   REJECTED      // rejeitada pela prefeitura
   ERROR         // erro técnico
+}
+
+// =====================================================================
+//  PRECIFICAÇÃO POR DATA (temporadas, feriados, eventos)
+// =====================================================================
+
+/// Regra de tarifa que ajusta a diária do ADULTO num intervalo de datas.
+/// A diária de cada noite é resolvida pela regra ATIVA de maior prioridade
+/// que contém a data; sem regra, usa RoomType.basePrice. Criança 9–15 segue
+/// fixa (R$50) e 0–8 grátis — só o adulto varia por data.
+model RatePeriod {
+  id          String   @id @default(cuid())
+  propertyId  String
+  roomTypeId  String?                              // null = todas as categorias
+
+  name        String                               // "Alta temporada", "Réveillon"
+  startDate   DateTime @db.Date                    // início (inclusivo)
+  endDate     DateTime @db.Date                    // fim (inclusivo)
+
+  adjustType  RateAdjustType                       // ABSOLUTE | PERCENT
+  value       Decimal  @db.Decimal(10, 2)          // ABSOLUTE: novo valor do adulto; PERCENT: +% (ex: 30)
+
+  priority    Int      @default(0)                 // maior vence em sobreposição
+  active      Boolean  @default(true)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  property    Property @relation(fields: [propertyId], references: [id])
+
+  @@index([propertyId, startDate, endDate])
+  @@map("rate_periods")
+}
+
+enum RateAdjustType {
+  ABSOLUTE      // define um novo valor de diária (R$)
+  PERCENT       // acréscimo percentual sobre a base (+30%)
 }

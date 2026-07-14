@@ -6,3 +6,4 @@ export * from './payment.js';
 export * from './public-reservation.js';
 export * from './stock.js';
 export * from './report.js';
+export * from './pricing.js';

@@ -7,9 +7,10 @@ import { PropertyModule } from '../property/property.module.js';
 import { RoomModule } from '../room/room.module.js';
 import { PaymentModule } from '../payment/payment.module.js';
 import { AuditModule } from '../../common/audit/audit.module.js';
+import { PricingModule } from '../pricing/pricing.module.js';
 
 @Module({
-  imports: [PropertyModule, RoomModule, PaymentModule, AuditModule],
+  imports: [PropertyModule, RoomModule, PaymentModule, AuditModule, PricingModule],
   controllers: [PublicController, AssistantController],
   providers: [PublicReservationService, AssistantService],
 })

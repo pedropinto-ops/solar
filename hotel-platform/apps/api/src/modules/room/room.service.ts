@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
+import { PricingService } from '../pricing/pricing.service.js';
 
 export interface AvailabilityParams {
   propertyId: string;
@@ -61,7 +62,10 @@ export function allocateByCapacity(
 
 @Injectable()
 export class RoomService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly pricing: PricingService,
+  ) {}
 
   /**
    * Lista todos os quartos da propriedade (com tipo).
@@ -144,32 +148,43 @@ export class RoomService {
       }),
     );
 
-    return result.map(({ roomType, freeCaps }) => {
-      // Aloca por capacidade real: quantos quartos o grupo precisa de fato.
-      const alloc = allocateByCapacity(freeCaps, guests);
-      const maxCap = freeCaps.length ? Math.max(...freeCaps) : 0;
-      return {
-        id: roomType.id,
-        name: roomType.name,
-        description: roomType.description,
-        photos: roomType.photos,
-        amenities: roomType.amenities,
-        // Maior quarto livre (referência de "cabe até X por quarto").
-        maxOccupancy: maxCap,
-        bedConfig: roomType.bedConfig,
-        sizeSqm: roomType.sizeSqm,
-        dailyRate: roomType.basePrice.toNumber(),
-        // Estimativa MÁXIMA (todos adultos) — preço é por pessoa/idade, então
-        // o total final é calculado depois com as idades. Quartos não somam.
-        totalAmount: roomType.basePrice.toNumber() * nights * guests,
-        available: freeCaps.length,
-        // Nº de quartos que o grupo vai ocupar (0 se não couber).
-        roomsNeeded: alloc ? alloc.length : 0,
-        guests,
-        // "Esgotado" = não dá pra acomodar o grupo com os quartos livres.
-        soldOut: alloc === null,
-      };
-    });
+    return Promise.all(
+      result.map(async ({ roomType, freeCaps }) => {
+        // Aloca por capacidade real: quantos quartos o grupo precisa de fato.
+        const alloc = allocateByCapacity(freeCaps, guests);
+        const maxCap = freeCaps.length ? Math.max(...freeCaps) : 0;
+        // Cotação (todos adultos) — aplica tarifas por data se houver regras.
+        const quote = await this.pricing.quote({
+          propertyId,
+          roomTypeId: roomType.id,
+          basePrice: roomType.basePrice.toNumber(),
+          checkIn: checkInDate,
+          checkOut: checkOutDate,
+          ages: Array.from({ length: guests }, () => 30),
+        });
+        return {
+          id: roomType.id,
+          name: roomType.name,
+          description: roomType.description,
+          photos: roomType.photos,
+          amenities: roomType.amenities,
+          // Maior quarto livre (referência de "cabe até X por quarto").
+          maxOccupancy: maxCap,
+          bedConfig: roomType.bedConfig,
+          sizeSqm: roomType.sizeSqm,
+          // Diária média por noite (pode variar por data). Referência de exibição.
+          dailyRate: quote.avgDailyRate || roomType.basePrice.toNumber(),
+          // Estimativa MÁXIMA (todos adultos). Preço real é por pessoa/idade.
+          totalAmount: quote.total,
+          available: freeCaps.length,
+          // Nº de quartos que o grupo vai ocupar (0 se não couber).
+          roomsNeeded: alloc ? alloc.length : 0,
+          guests,
+          // "Esgotado" = não dá pra acomodar o grupo com os quartos livres.
+          soldOut: alloc === null,
+        };
+      }),
+    );
   }
 
   /**
