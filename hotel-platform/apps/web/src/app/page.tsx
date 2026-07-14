@@ -1,7 +1,7 @@
 'use client';
 
 /* eslint-disable @next/next/no-img-element */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
@@ -43,6 +43,7 @@ export default function HomePage() {
   const router = useRouter();
   const [ready, setReady] = useState(false);
   const [lightbox, setLightbox] = useState<string | null>(null);
+  const mapRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
     if (getToken()) router.replace('/dashboard');
@@ -54,6 +55,18 @@ export default function HomePage() {
     queryFn: () => apiFetch<PropertyPublic>(`/public/property/${SLUG}`, { skipAuth: true }),
     enabled: ready,
   });
+
+  // O mapa OSM (Leaflet) mede o tamanho ao carregar; se o layout ainda estava
+  // assentando, renderiza estreito. Recarrega o iframe uma vez, já com a
+  // largura final, para o mapa preencher o container.
+  useEffect(() => {
+    if (prop?.latitude == null) return;
+    const t = setTimeout(() => {
+      const f = mapRef.current;
+      if (f) f.src = f.src;
+    }, 700);
+    return () => clearTimeout(t);
+  }, [prop?.latitude, prop?.longitude]);
 
   if (!ready) {
     return (
@@ -142,6 +155,7 @@ export default function HomePage() {
                 iframe (o embed do Google exige chave/é bloqueado). O botão
                 "Como chegar" abaixo abre a rota no Google Maps. */}
             <iframe
+              ref={mapRef}
               title="Mapa do Solar Irará Hotel"
               src={`https://www.openstreetmap.org/export/embed.html?bbox=${prop!.longitude! - 0.028}%2C${prop!.latitude! - 0.008}%2C${prop!.longitude! + 0.028}%2C${prop!.latitude! + 0.008}&layer=mapnik&marker=${prop!.latitude}%2C${prop!.longitude}`}
               className="w-full h-64 sm:h-80 border-0"
