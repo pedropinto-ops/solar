@@ -735,6 +735,98 @@ export function useReportForecast() {
 }
 
 // =========================================
+//  Preços (diárias + tarifas por data)
+// =========================================
+
+export interface RatePeriodItem {
+  id: string;
+  name: string;
+  roomTypeId: string | null;
+  startDate: string;
+  endDate: string;
+  adjustType: 'ABSOLUTE' | 'PERCENT';
+  value: number;
+  priority: number;
+  active: boolean;
+}
+
+export interface PricingOverview {
+  childFee: number;
+  childFreeMaxAge: number;
+  childFeeMaxAge: number;
+  roomTypes: Array<{ id: string; name: string; basePrice: number }>;
+  periods: RatePeriodItem[];
+}
+
+export interface PriceCalendar {
+  basePrice: number;
+  days: Array<{ date: string; adultRate: number; ruleName: string | null }>;
+}
+
+export function usePricingOverview() {
+  return useQuery({
+    queryKey: ['pricing', 'overview'],
+    queryFn: () => apiFetch<PricingOverview>('/pricing/overview'),
+  });
+}
+
+export function usePriceCalendar(roomTypeId: string, start: string, end: string) {
+  return useQuery({
+    queryKey: ['pricing', 'calendar', roomTypeId, start, end],
+    queryFn: () =>
+      apiFetch<PriceCalendar>(
+        `/pricing/calendar?roomTypeId=${roomTypeId}&start=${start}&end=${end}`,
+      ),
+    enabled: Boolean(roomTypeId && start && end),
+  });
+}
+
+export function useUpdateBasePrice() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ roomTypeId, basePrice }: { roomTypeId: string; basePrice: number }) =>
+      apiFetch(`/pricing/room-types/${roomTypeId}/base-price`, {
+        method: 'PATCH',
+        body: { basePrice },
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['pricing'] }),
+  });
+}
+
+export function useCreateRatePeriod() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      name: string;
+      roomTypeId?: string | null;
+      startDate: string;
+      endDate: string;
+      adjustType: 'ABSOLUTE' | 'PERCENT';
+      value: number;
+      priority: number;
+    }) => apiFetch('/pricing/periods', { method: 'POST', body }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['pricing'] }),
+  });
+}
+
+export function useUpdateRatePeriod() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: string } & Record<string, unknown>) =>
+      apiFetch(`/pricing/periods/${id}`, { method: 'PATCH', body }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['pricing'] }),
+  });
+}
+
+export function useDeleteRatePeriod() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiFetch(`/pricing/periods/${id}`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['pricing'] }),
+  });
+}
+
+// =========================================
 //  Painel de quartos (recepção)
 // =========================================
 

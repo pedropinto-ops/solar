@@ -28,6 +28,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/minha-limpeza', label: 'Limpeza', icon: 'sparkles' },
   { href: '/almoxarifado', label: 'Almoxarifado', icon: 'box' },
   { href: '/relatorios', label: 'Relatórios', icon: 'chart' },
+  { href: '/precos', label: 'Preços', icon: 'tag' },
   { href: '/usuarios', label: 'Usuários', icon: 'users' },
 ];
 
@@ -102,6 +103,13 @@ function Icon({ name, className }: { name: string; className?: string }) {
           <rect x="5" y="11" width="3.5" height="7" />
           <rect x="10.25" y="7" width="3.5" height="11" />
           <rect x="15.5" y="13" width="3.5" height="5" />
+        </svg>
+      );
+    case 'tag':
+      return (
+        <svg className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+          <line x1="7" y1="7" x2="7.01" y2="7" />
         </svg>
       );
     case 'logout':

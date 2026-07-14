@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { PricingService } from './pricing.service.js';
@@ -35,6 +36,23 @@ export class PricingController {
   @Roles('ADMIN', 'MANAGER')
   async overview(@CurrentUser() user: AuthenticatedUser) {
     return this.pricing.pricingOverview(user.propertyId);
+  }
+
+  /** Agenda de preços: diária de cada dia em [start, end) para uma categoria. */
+  @Get('calendar')
+  @Roles('ADMIN', 'MANAGER')
+  async calendar(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('roomTypeId') roomTypeId: string,
+    @Query('start') start: string,
+    @Query('end') end: string,
+  ) {
+    return this.pricing.priceCalendar({
+      propertyId: user.propertyId,
+      roomTypeId,
+      start: new Date(start),
+      end: new Date(end),
+    });
   }
 
   @Patch('room-types/:id/base-price')

@@ -129,6 +129,35 @@ export class PricingService {
     };
   }
 
+  /**
+   * Calendário de preços: diária do adulto para cada dia de [start, end).
+   * Alimenta a agenda visual da aba "Preços". Reusa a resolução do cotador.
+   */
+  async priceCalendar(params: {
+    propertyId: string;
+    roomTypeId: string;
+    start: Date;
+    end: Date;
+  }) {
+    const { propertyId, roomTypeId, start, end } = params;
+    const rt = await this.prisma.roomType.findFirst({
+      where: { id: roomTypeId, propertyId },
+      select: { basePrice: true },
+    });
+    const basePrice = rt ? Number(rt.basePrice) : 0;
+    const periods = await this.getActivePeriods(propertyId, roomTypeId);
+
+    const startIdx = dayIndex(start);
+    const endIdx = dayIndex(end);
+    const days: Array<{ date: string; adultRate: number; ruleName: string | null }> = [];
+    for (let d = startIdx; d < endIdx; d++) {
+      const date = new Date(d * 86_400_000);
+      const { rate, ruleName } = this.resolveAdultRate(basePrice, date, periods);
+      days.push({ date: date.toISOString().split('T')[0]!, adultRate: rate, ruleName });
+    }
+    return { basePrice, days };
+  }
+
   // ===========================================================
   //  GESTÃO (ADMIN/MANAGER) — a aba "Preços"
   // ===========================================================
