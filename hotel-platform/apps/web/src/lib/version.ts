@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Versão do sistema — formato XX.ZZ (ex.: 1.00, 1.03, 2.00).
  *
  * Regra de incremento (a cada modificação do sistema):
@@ -7,4 +7,4 @@
  *
  * Fonte única exibida no rodapé do portal.
  */
-export const APP_VERSION = '4.13';
+export const APP_VERSION = '4.14';
