@@ -140,7 +140,7 @@ export default function HomePage() {
           <div className="rounded-xl overflow-hidden border border-sand-200">
             <iframe
               title="Mapa do Solar Irará Hotel"
-              src={`https://www.google.com/maps?q=${prop!.latitude},${prop!.longitude}&z=16&hl=pt&output=embed`}
+              src={`https://maps.google.com/maps?q=${prop!.latitude},${prop!.longitude}&z=16&hl=pt&output=embed`}
               className="w-full h-64 sm:h-80 border-0"
               loading="lazy"
               referrerPolicy="no-referrer-when-downgrade"
