@@ -750,12 +750,26 @@ export interface RatePeriodItem {
   active: boolean;
 }
 
+export interface PackageItem {
+  id: string;
+  name: string;
+  kind: 'CLOSED_PRICE' | 'LOS_DISCOUNT';
+  active: boolean;
+  nights: number | null;
+  price: number | null;
+  includedItems: string[];
+  description: string | null;
+  minNights: number | null;
+  discountPercent: number | null;
+}
+
 export interface PricingOverview {
   childFee: number;
   childFreeMaxAge: number;
   childFeeMaxAge: number;
   roomTypes: Array<{ id: string; name: string; basePrice: number }>;
   periods: RatePeriodItem[];
+  packages: PackageItem[];
 }
 
 export interface PriceCalendar {
@@ -822,6 +836,32 @@ export function useDeleteRatePeriod() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => apiFetch(`/pricing/periods/${id}`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['pricing'] }),
+  });
+}
+
+export function useCreatePackage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Record<string, unknown>) =>
+      apiFetch('/pricing/packages', { method: 'POST', body }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['pricing'] }),
+  });
+}
+
+export function useUpdatePackage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: string } & Record<string, unknown>) =>
+      apiFetch(`/pricing/packages/${id}`, { method: 'PATCH', body }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['pricing'] }),
+  });
+}
+
+export function useDeletePackage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiFetch(`/pricing/packages/${id}`, { method: 'DELETE' }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['pricing'] }),
   });
 }

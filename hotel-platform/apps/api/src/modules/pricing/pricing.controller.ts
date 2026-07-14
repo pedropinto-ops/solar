@@ -21,9 +21,13 @@ import {
   createRatePeriodSchema,
   updateRatePeriodSchema,
   updateBasePriceSchema,
+  createPackageSchema,
+  updatePackageSchema,
   type CreateRatePeriodInput,
   type UpdateRatePeriodInput,
   type UpdateBasePriceInput,
+  type CreatePackageInput,
+  type UpdatePackageInput,
 } from '@hotel/shared/schemas';
 
 /** Aba "Preços" — gestão de diárias e regras de tarifa. Só ADMIN/MANAGER. */
@@ -113,6 +117,59 @@ export class PricingController {
     @Param('id') id: string,
   ) {
     return this.pricing.removePeriod({
+      propertyId: user.propertyId,
+      userId: user.userId,
+      id,
+    });
+  }
+
+  // ---- Combos / pacotes ----
+
+  @Post('packages')
+  @Roles('ADMIN', 'MANAGER')
+  async createPackage(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(createPackageSchema)) dto: CreatePackageInput,
+  ) {
+    return this.pricing.createPackage({
+      propertyId: user.propertyId,
+      userId: user.userId,
+      data: {
+        name: dto.name,
+        kind: dto.kind,
+        roomTypeId: dto.roomTypeId ?? null,
+        nights: dto.nights ?? null,
+        price: dto.price ?? null,
+        includedItems: dto.includedItems,
+        description: dto.description ?? null,
+        minNights: dto.minNights ?? null,
+        discountPercent: dto.discountPercent ?? null,
+      },
+    });
+  }
+
+  @Patch('packages/:id')
+  @Roles('ADMIN', 'MANAGER')
+  async updatePackage(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(updatePackageSchema)) dto: UpdatePackageInput,
+  ) {
+    return this.pricing.updatePackage({
+      propertyId: user.propertyId,
+      userId: user.userId,
+      id,
+      data: dto,
+    });
+  }
+
+  @Delete('packages/:id')
+  @Roles('ADMIN', 'MANAGER')
+  async removePackage(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+  ) {
+    return this.pricing.removePackage({
       propertyId: user.propertyId,
       userId: user.userId,
       id,

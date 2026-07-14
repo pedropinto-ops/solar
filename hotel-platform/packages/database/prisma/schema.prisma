@@ -112,6 +112,7 @@ model Property {
   invoices      Invoice[]
   fiscalDocuments FiscalDocument[]
   ratePeriods   RatePeriod[]
+  packages      Package[]
 
   @@map("properties")
 }
@@ -1089,4 +1090,47 @@ model RatePeriod {
 enum RateAdjustType {
   ABSOLUTE      // define um novo valor de diária (R$)
   PERCENT       // acréscimo percentual sobre a base (+30%)
+}
+
+// =====================================================================
+//  COMBOS / PACOTES
+// =====================================================================
+
+/// Combo/pacote lançado pelo gestor. Três formas (kind):
+///  - CLOSED_PRICE: pacote de N diárias por um preço fechado, com ou sem
+///    serviços inclusos (café especial, jantar...). Oferta escolhível.
+///  - LOS_DISCOUNT: desconto automático a partir de N noites (ex.: 5+ = 15%).
+///    Aplicado pelo cotador sobre o total das diárias.
+model Package {
+  id            String      @id @default(cuid())
+  propertyId    String
+  roomTypeId    String?                             // null = todas as categorias
+
+  name          String                              // "Pacote 3 noites", "Lua de Mel", "5+ noites"
+  kind          PackageKind
+  active        Boolean     @default(true)
+
+  // ---- CLOSED_PRICE ----
+  nights        Int?                                // nº de diárias do pacote
+  price         Decimal?    @db.Decimal(10, 2)      // preço total fechado do pacote
+  includedItems String[]                            // serviços/experiências inclusos (descritivos)
+  description   String?
+
+  // ---- LOS_DISCOUNT ----
+  minNights       Int?                              // a partir de N noites
+  discountPercent Decimal?  @db.Decimal(5, 2)       // % de desconto (ex.: 15)
+
+  priority      Int         @default(0)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  property      Property    @relation(fields: [propertyId], references: [id])
+
+  @@index([propertyId])
+  @@map("packages")
+}
+
+enum PackageKind {
+  CLOSED_PRICE      // pacote de N diárias por preço fechado (± serviços)
+  LOS_DISCOUNT      // desconto por número de noites (length of stay)
 }

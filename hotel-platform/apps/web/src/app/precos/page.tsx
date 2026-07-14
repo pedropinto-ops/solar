@@ -15,7 +15,11 @@ import {
   useCreateRatePeriod,
   useUpdateRatePeriod,
   useDeleteRatePeriod,
+  useCreatePackage,
+  useUpdatePackage,
+  useDeletePackage,
   type RatePeriodItem,
+  type PackageItem,
 } from '@/lib/hooks';
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -44,6 +48,7 @@ export default function PrecosPage() {
             <ChildInfo childFee={data.childFee} freeMax={data.childFreeMaxAge} feeMax={data.childFeeMaxAge} />
             <PriceAgenda roomTypeId={roomType.id} />
             <RulesList periods={data.periods} roomTypeId={roomType.id} />
+            <PackagesList packages={data.packages} roomTypeId={roomType.id} />
           </>
         )}
         {data && !roomType && (
@@ -329,6 +334,166 @@ function RuleSheet({
         <Field label="Prioridade (maior vence quando duas regras batem no mesmo dia)">
           <input className={inputCls} value={form.priority} inputMode="numeric" onChange={(e) => setForm({ ...form, priority: e.target.value })} />
         </Field>
+        <div className="flex gap-2 pt-1">
+          <Button fullWidth onClick={submit} disabled={pending}>{pending ? 'Salvando…' : 'Salvar'}</Button>
+          <Button fullWidth variant="secondary" onClick={onClose}>Cancelar</Button>
+        </div>
+      </div>
+    </Sheet>
+  );
+}
+
+function describePackage(p: PackageItem): string {
+  if (p.kind === 'CLOSED_PRICE') {
+    return `${p.nights} diária${p.nights !== 1 ? 's' : ''} por ${fmtCurrency(p.price ?? 0)}`;
+  }
+  return `A partir de ${p.minNights} noites: ${p.discountPercent}% de desconto`;
+}
+
+function PackagesList({ packages, roomTypeId }: { packages: PackageItem[]; roomTypeId: string }) {
+  const del = useDeletePackage();
+  const [creating, setCreating] = useState<null | 'CLOSED_PRICE' | 'LOS_DISCOUNT'>(null);
+  const [editing, setEditing] = useState<PackageItem | null>(null);
+
+  return (
+    <Card className="p-4">
+      <h2 className="font-serif-display text-lg text-ink-950">Combos e pacotes</h2>
+      <p className="text-xs text-ink-500 mt-0.5 mb-3">
+        Pacotes com preço fechado (com ou sem serviços) e desconto automático por número de noites.
+      </p>
+      <div className="flex flex-wrap gap-2 mb-3">
+        <Button size="sm" onClick={() => setCreating('CLOSED_PRICE')}>+ Pacote de diárias</Button>
+        <Button size="sm" variant="secondary" onClick={() => setCreating('LOS_DISCOUNT')}>+ Desconto por noites</Button>
+      </div>
+      {packages.length === 0 ? (
+        <EmptyState title="Nenhum combo ainda" description="Crie um pacote de diárias ou um desconto por número de noites." />
+      ) : (
+        <div className="space-y-2">
+          {packages.map((p) => (
+            <div key={p.id} className="flex items-start justify-between gap-3 rounded-lg border border-sand-200 p-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-medium text-ink-950 truncate">{p.name}</span>
+                  <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-sand-100 text-ink-500">
+                    {p.kind === 'CLOSED_PRICE' ? 'Pacote' : 'Desconto'}
+                  </span>
+                  {!p.active && <span className="text-[10px] text-ink-300 uppercase">inativo</span>}
+                </div>
+                <div className="text-xs text-ink-500 mt-0.5">{describePackage(p)}</div>
+                {p.includedItems.length > 0 && (
+                  <div className="text-xs text-ink-500 mt-0.5">Inclui: {p.includedItems.join(', ')}</div>
+                )}
+              </div>
+              <div className="flex gap-1 shrink-0">
+                <Button size="sm" variant="ghost" onClick={() => setEditing(p)}>Editar</Button>
+                <Button size="sm" variant="ghost" onClick={() => { if (confirm(`Excluir "${p.name}"?`)) del.mutate(p.id); }}>Excluir</Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {creating && <PackageSheet roomTypeId={roomTypeId} kind={creating} onClose={() => setCreating(null)} />}
+      {editing && <PackageSheet roomTypeId={roomTypeId} editItem={editing} onClose={() => setEditing(null)} />}
+    </Card>
+  );
+}
+
+function PackageSheet({
+  roomTypeId,
+  kind,
+  editItem,
+  onClose,
+}: {
+  roomTypeId: string;
+  kind?: 'CLOSED_PRICE' | 'LOS_DISCOUNT';
+  editItem?: PackageItem;
+  onClose: () => void;
+}) {
+  const create = useCreatePackage();
+  const update = useUpdatePackage();
+  const isClosed = (editItem?.kind ?? kind) === 'CLOSED_PRICE';
+  const [form, setForm] = useState({
+    name: editItem?.name ?? '',
+    nights: editItem?.nights ? String(editItem.nights) : '',
+    price: editItem?.price ? String(editItem.price) : '',
+    includedItems: (editItem?.includedItems ?? []).join('\n'),
+    description: editItem?.description ?? '',
+    minNights: editItem?.minNights ? String(editItem.minNights) : '',
+    discountPercent: editItem?.discountPercent ? String(editItem.discountPercent) : '',
+    active: editItem?.active ?? true,
+  });
+  const [error, setError] = useState<string | null>(null);
+  const pending = create.isPending || update.isPending;
+
+  async function submit() {
+    setError(null);
+    if (!form.name.trim()) { setError('Dê um nome ao combo'); return; }
+    const body: Record<string, unknown> = { name: form.name.trim() };
+    if (isClosed) {
+      const nights = Number(form.nights);
+      const price = Number(form.price.replace(',', '.'));
+      if (!(nights >= 1)) { setError('Informe o nº de diárias'); return; }
+      if (!(price > 0)) { setError('Informe o preço do pacote'); return; }
+      body.nights = nights;
+      body.price = price;
+      body.includedItems = form.includedItems.split('\n').map((s) => s.trim()).filter(Boolean);
+      body.description = form.description.trim() || null;
+    } else {
+      const minNights = Number(form.minNights);
+      const discountPercent = Number(form.discountPercent.replace(',', '.'));
+      if (!(minNights >= 1)) { setError('Informe a partir de quantas noites'); return; }
+      if (!(discountPercent > 0)) { setError('Informe o desconto'); return; }
+      body.minNights = minNights;
+      body.discountPercent = discountPercent;
+    }
+    try {
+      if (editItem) await update.mutateAsync({ id: editItem.id, ...body, active: form.active });
+      else await create.mutateAsync({ ...body, kind, roomTypeId });
+      onClose();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Erro ao salvar');
+    }
+  }
+
+  const title = editItem
+    ? `Editar — ${editItem.name}`
+    : isClosed ? 'Novo pacote de diárias' : 'Novo desconto por noites';
+
+  return (
+    <Sheet open onClose={onClose} title={title} maxWidth="md">
+      <div className="space-y-3">
+        {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg p-3">{error}</div>}
+        <Field label="Nome (ex.: Pacote 3 noites, Lua de Mel, 5+ noites)">
+          <input className={inputCls} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+        </Field>
+
+        {isClosed ? (
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Nº de diárias"><input className={inputCls} inputMode="numeric" value={form.nights} onChange={(e) => setForm({ ...form, nights: e.target.value })} placeholder="3" /></Field>
+              <Field label="Preço total (R$)"><input className={inputCls} inputMode="decimal" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} placeholder="400" /></Field>
+            </div>
+            <Field label="Serviços inclusos (um por linha) — opcional">
+              <textarea className={cn(inputCls, 'min-h-[72px]')} value={form.includedItems} onChange={(e) => setForm({ ...form, includedItems: e.target.value })} placeholder={'Café da manhã especial\nJantar romântico'} />
+            </Field>
+            <Field label="Descrição — opcional">
+              <input className={inputCls} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+            </Field>
+          </>
+        ) : (
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="A partir de (noites)"><input className={inputCls} inputMode="numeric" value={form.minNights} onChange={(e) => setForm({ ...form, minNights: e.target.value })} placeholder="5" /></Field>
+            <Field label="Desconto (%)"><input className={inputCls} inputMode="decimal" value={form.discountPercent} onChange={(e) => setForm({ ...form, discountPercent: e.target.value })} placeholder="15" /></Field>
+          </div>
+        )}
+
+        {editItem && (
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={form.active} onChange={(e) => setForm({ ...form, active: e.target.checked })} />
+            Ativo
+          </label>
+        )}
+
         <div className="flex gap-2 pt-1">
           <Button fullWidth onClick={submit} disabled={pending}>{pending ? 'Salvando…' : 'Salvar'}</Button>
           <Button fullWidth variant="secondary" onClick={onClose}>Cancelar</Button>

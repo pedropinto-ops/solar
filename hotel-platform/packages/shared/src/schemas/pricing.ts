@@ -40,3 +40,47 @@ export const updateBasePriceSchema = z.object({
   basePrice: z.coerce.number().positive('A diária deve ser maior que zero').max(100000),
 });
 export type UpdateBasePriceInput = z.infer<typeof updateBasePriceSchema>;
+
+// ---- Combos / pacotes ----
+
+export const packageKindEnum = z.enum(['CLOSED_PRICE', 'LOS_DISCOUNT']);
+
+export const createPackageSchema = z
+  .object({
+    name: z.string().trim().min(2, 'Dê um nome ao combo').max(80),
+    kind: packageKindEnum,
+    roomTypeId: z.string().cuid().nullish(),
+    // CLOSED_PRICE (pacote de N diárias, ± serviços):
+    nights: z.coerce.number().int().min(1).max(60).nullish(),
+    price: z.coerce.number().positive().nullish(),
+    includedItems: z.array(z.string().trim().min(1).max(80)).max(20).default([]),
+    description: z.string().trim().max(500).nullish(),
+    // LOS_DISCOUNT (desconto por nº de noites):
+    minNights: z.coerce.number().int().min(1).max(60).nullish(),
+    discountPercent: z.coerce.number().positive().max(90).nullish(),
+  })
+  .superRefine((d, ctx) => {
+    if (d.kind === 'CLOSED_PRICE') {
+      if (!d.nights) ctx.addIssue({ code: 'custom', path: ['nights'], message: 'Informe o nº de diárias' });
+      if (!d.price) ctx.addIssue({ code: 'custom', path: ['price'], message: 'Informe o preço do pacote' });
+    } else {
+      if (!d.minNights) ctx.addIssue({ code: 'custom', path: ['minNights'], message: 'Informe a partir de quantas noites' });
+      if (!d.discountPercent) ctx.addIssue({ code: 'custom', path: ['discountPercent'], message: 'Informe o desconto' });
+    }
+  });
+export type CreatePackageInput = z.infer<typeof createPackageSchema>;
+
+export const updatePackageSchema = z
+  .object({
+    name: z.string().trim().min(2).max(80).optional(),
+    roomTypeId: z.string().cuid().nullish(),
+    nights: z.coerce.number().int().min(1).max(60).nullish(),
+    price: z.coerce.number().positive().nullish(),
+    includedItems: z.array(z.string().trim().min(1).max(80)).max(20).optional(),
+    description: z.string().trim().max(500).nullish(),
+    minNights: z.coerce.number().int().min(1).max(60).nullish(),
+    discountPercent: z.coerce.number().positive().max(90).nullish(),
+    active: z.boolean().optional(),
+  })
+  .refine((d) => Object.keys(d).length > 0, { message: 'Nada para atualizar' });
+export type UpdatePackageInput = z.infer<typeof updatePackageSchema>;

@@ -29,8 +29,14 @@ export interface NightRate {
 export interface Quote {
   nights: number;
   perNight: NightRate[];
-  /** Total por pessoa, na ordem das idades recebidas. */
+  /** Total por pessoa (já com desconto), na ordem das idades recebidas. */
   perPerson: number[];
+  /** Total das diárias antes do desconto por noites. */
+  subtotal: number;
+  discountPercent: number;
+  discountName: string | null;
+  discountAmount: number;
+  /** Total final (após desconto por número de noites, se houver). */
   total: number;
   /** Média por noite (compat. com Reservation.dailyRate). */
   avgDailyRate: number;
@@ -120,12 +126,40 @@ export class PricingService {
       });
     }
 
+    // Desconto por número de noites (LOS): o MAIOR desconto cujo minNights <= nights.
+    const losRules = await this.prisma.package.findMany({
+      where: {
+        propertyId,
+        kind: 'LOS_DISCOUNT',
+        active: true,
+        minNights: { lte: nights },
+        OR: [{ roomTypeId: null }, ...(roomTypeId ? [{ roomTypeId }] : [])],
+      },
+    });
+    let discountPercent = 0;
+    let discountName: string | null = null;
+    for (const p of losRules) {
+      const dp = Number(p.discountPercent ?? 0);
+      if (dp > discountPercent) {
+        discountPercent = dp;
+        discountName = p.name;
+      }
+    }
+    const factor = 1 - discountPercent / 100;
+    const subtotal = round2(total);
+    const finalTotal = round2(total * factor);
+
     return {
       nights,
       perNight,
-      perPerson: perPerson.map(round2),
-      total: round2(total),
-      avgDailyRate: nights > 0 ? round2(total / nights) : 0,
+      // Desconto rateado por pessoa p/ manter a soma coerente no fatiamento por quarto.
+      perPerson: perPerson.map((v) => round2(v * factor)),
+      subtotal,
+      discountPercent,
+      discountName,
+      discountAmount: round2(subtotal - finalTotal),
+      total: finalTotal,
+      avgDailyRate: nights > 0 ? round2(finalTotal / nights) : 0,
     };
   }
 
@@ -162,9 +196,9 @@ export class PricingService {
   //  GESTÃO (ADMIN/MANAGER) — a aba "Preços"
   // ===========================================================
 
-  /** Diárias base por categoria + regras de tarifa cadastradas. */
+  /** Diárias base por categoria + regras de tarifa + combos cadastrados. */
   async pricingOverview(propertyId: string) {
-    const [roomTypes, periods] = await Promise.all([
+    const [roomTypes, periods, packages] = await Promise.all([
       this.prisma.roomType.findMany({
         where: { propertyId, active: true },
         select: { id: true, name: true, basePrice: true },
@@ -173,6 +207,10 @@ export class PricingService {
       this.prisma.ratePeriod.findMany({
         where: { propertyId },
         orderBy: [{ startDate: 'asc' }, { priority: 'desc' }],
+      }),
+      this.prisma.package.findMany({
+        where: { propertyId },
+        orderBy: [{ kind: 'asc' }, { createdAt: 'asc' }],
       }),
     ]);
     return {
@@ -195,7 +233,125 @@ export class PricingService {
         priority: p.priority,
         active: p.active,
       })),
+      packages: packages.map((p) => ({
+        id: p.id,
+        name: p.name,
+        kind: p.kind,
+        active: p.active,
+        nights: p.nights,
+        price: p.price != null ? Number(p.price) : null,
+        includedItems: p.includedItems,
+        description: p.description,
+        minNights: p.minNights,
+        discountPercent: p.discountPercent != null ? Number(p.discountPercent) : null,
+      })),
     };
+  }
+
+  // ---- Combos / pacotes ----
+
+  async createPackage(params: {
+    propertyId: string;
+    userId: string;
+    data: {
+      name: string;
+      kind: 'CLOSED_PRICE' | 'LOS_DISCOUNT';
+      roomTypeId?: string | null;
+      nights?: number | null;
+      price?: number | null;
+      includedItems?: string[];
+      description?: string | null;
+      minNights?: number | null;
+      discountPercent?: number | null;
+    };
+  }) {
+    const { propertyId, userId, data } = params;
+    const created = await this.prisma.package.create({
+      data: {
+        propertyId,
+        roomTypeId: data.roomTypeId ?? null,
+        name: data.name,
+        kind: data.kind,
+        nights: data.nights ?? null,
+        price: data.price != null ? new P.Decimal(data.price) : null,
+        includedItems: data.includedItems ?? [],
+        description: data.description ?? null,
+        minNights: data.minNights ?? null,
+        discountPercent: data.discountPercent != null ? new P.Decimal(data.discountPercent) : null,
+      },
+    });
+    await this.audit.log({
+      propertyId,
+      userId,
+      action: 'pricing.package_created',
+      entityType: 'Package',
+      entityId: created.id,
+      changes: { name: data.name, kind: data.kind },
+    });
+    return created;
+  }
+
+  async updatePackage(params: {
+    propertyId: string;
+    userId: string;
+    id: string;
+    data: Partial<{
+      name: string;
+      roomTypeId: string | null;
+      nights: number | null;
+      price: number | null;
+      includedItems: string[];
+      description: string | null;
+      minNights: number | null;
+      discountPercent: number | null;
+      active: boolean;
+    }>;
+  }) {
+    const { propertyId, userId, id, data } = params;
+    const existing = await this.prisma.package.findFirst({ where: { id, propertyId } });
+    if (!existing) throw new NotFoundException({ errorCode: 'NOT_FOUND', title: 'Combo não encontrado' });
+
+    const updated = await this.prisma.package.update({
+      where: { id },
+      data: {
+        ...(data.name !== undefined ? { name: data.name } : {}),
+        ...(data.roomTypeId !== undefined ? { roomTypeId: data.roomTypeId } : {}),
+        ...(data.nights !== undefined ? { nights: data.nights } : {}),
+        ...(data.price !== undefined ? { price: data.price != null ? new P.Decimal(data.price) : null } : {}),
+        ...(data.includedItems !== undefined ? { includedItems: data.includedItems } : {}),
+        ...(data.description !== undefined ? { description: data.description } : {}),
+        ...(data.minNights !== undefined ? { minNights: data.minNights } : {}),
+        ...(data.discountPercent !== undefined
+          ? { discountPercent: data.discountPercent != null ? new P.Decimal(data.discountPercent) : null }
+          : {}),
+        ...(data.active !== undefined ? { active: data.active } : {}),
+      },
+    });
+    await this.audit.log({
+      propertyId,
+      userId,
+      action: 'pricing.package_updated',
+      entityType: 'Package',
+      entityId: id,
+      changes: data as Record<string, unknown>,
+    });
+    return updated;
+  }
+
+  async removePackage(params: { propertyId: string; userId: string; id: string }) {
+    const { propertyId, userId, id } = params;
+    const existing = await this.prisma.package.findFirst({ where: { id, propertyId } });
+    if (!existing) throw new NotFoundException({ errorCode: 'NOT_FOUND', title: 'Combo não encontrado' });
+    await this.prisma.package.delete({ where: { id } });
+    await this.audit.log({
+      propertyId,
+      userId,
+      action: 'pricing.package_deleted',
+      entityType: 'Package',
+      entityId: id,
+      changes: { name: existing.name },
+    });
+    return { ok: true };
   }
 
   async updateBasePrice(params: {
