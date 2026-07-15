@@ -102,7 +102,9 @@ export class PublicReservationService {
       });
     }
 
-    const result = await this.prisma.$transaction(async (tx) => {
+    const result = await this.withTransientRetry(
+      () =>
+        this.prisma.$transaction(async (tx) => {
       // 0. Serializa a criação de reservas POR PROPRIEDADE. Torna o fluxo
       //    "verifica disponibilidade → cria" atômico entre requisições
       //    concorrentes. Sem isto, duas requisições simultâneas podem ambas
@@ -391,7 +393,9 @@ export class PublicReservationService {
         depositAmount: Math.round(grandTotal * 30) / 100,
         idempotentHit: false,
       };
-    });
+        }),
+      'createReservation',
+    );
 
     // 7. Sem pagamento online nesta fase: a reserva é uma SOLICITAÇÃO com
     //    contrato aceito. A recepção valida e combina o pagamento à parte.
@@ -434,5 +438,47 @@ export class PublicReservationService {
     for (const [key, entry] of this.idempotencyCache.entries()) {
       if (entry.expiresAt < now) this.idempotencyCache.delete(key);
     }
+  }
+
+  /**
+   * Executa `fn` com retry APENAS para erros transientes de conexão com o banco
+   * (ex.: o compute serverless do Neon "acordando" de um estado ocioso derruba a
+   * primeira query). Reservar é seguro de repetir porque (a) a transação faz
+   * rollback total em erro e (b) a idempotência por chave impede duplicação.
+   * Erros de NEGÓCIO (conflito de quarto, validação, etc.) NÃO são repetidos —
+   * falham na hora.
+   */
+  private async withTransientRetry<T>(fn: () => Promise<T>, label: string): Promise<T> {
+    const maxAttempts = 3;
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await fn();
+      } catch (err: any) {
+        if (attempt >= maxAttempts || !this.isTransientDbError(err)) throw err;
+        const backoffMs = 150 * attempt;
+        this.logger.warn(
+          `${label}: erro transiente de banco (tentativa ${attempt}/${maxAttempts}), ` +
+            `novo retry em ${backoffMs}ms — ${err?.message ?? err}`,
+        );
+        await new Promise((r) => setTimeout(r, backoffMs));
+      }
+    }
+  }
+
+  /** Heurística conservadora: só considera transiente erro de CONEXÃO, não de negócio. */
+  private isTransientDbError(err: any): boolean {
+    // Exceções de negócio do Nest (Conflict/BadRequest/NotFound) nunca são transientes.
+    if (err?.status && err.status < 500) return false;
+    const code = err?.code;
+    // Códigos de conexão do Prisma: inalcançável, timeout, conexão encerrada.
+    if (['P1001', 'P1002', 'P1008', 'P1017'].includes(code)) return true;
+    const name = err?.name ?? err?.constructor?.name;
+    if (name === 'PrismaClientInitializationError' || name === 'PrismaClientRustPanicError') {
+      return true;
+    }
+    const msg = String(err?.message ?? '').toLowerCase();
+    return /connection|econnreset|terminating connection|server closed|closed the connection|timed out|reset by peer|can'?t reach database/.test(
+      msg,
+    );
   }
 }
