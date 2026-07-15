@@ -60,6 +60,13 @@ export default function ReservationPage({ params }: { params: { id: string } }) 
   const balance = res.folio.balance;
   const hasBalance = balance > 0.01;
 
+  // Acompanhantes = hóspedes vinculados que não são o titular.
+  const companions = res.guests.filter((g) => !g.isPrimary);
+  const headcount = res.adults + res.children;
+  // Quantos hóspedes da lotação ainda não têm cadastro (ex.: reserva feita
+  // pela recepção informando só o titular).
+  const missingCompanions = Math.max(0, headcount - 1 - companions.length);
+
   return (
     <AppShell>
       <PageHeader
@@ -122,6 +129,45 @@ export default function ReservationPage({ params }: { params: { id: string } }) 
                 <div className="text-ink-300 text-sm">Sem titular vinculado.</div>
               )}
             </Card>
+
+            {/* Acompanhantes */}
+            {(companions.length > 0 || missingCompanions > 0) && (
+              <Card padding="lg">
+                <CardHeader
+                  title={`Acompanhantes${companions.length ? ` · ${companions.length}` : ''}`}
+                />
+                {companions.length > 0 && (
+                  <div className="space-y-3">
+                    {companions.map((g) => (
+                      <div key={g.id} className="flex items-center gap-3">
+                        <Avatar name={g.guest.fullName} size="md" />
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm font-medium text-ink-950 truncate">
+                            {g.guest.fullName}
+                          </div>
+                          <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-ink-500">
+                            <span>{fmtDoc(g.guest.documentType, g.guest.documentNumber)}</span>
+                            {g.guest.phone && <span>{g.guest.phone}</span>}
+                            {g.guest.email && <span className="truncate">{g.guest.email}</span>}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {missingCompanions > 0 && (
+                  <div
+                    className={cn(
+                      'text-xs text-amber-700',
+                      companions.length > 0 && 'mt-3 pt-3 border-t border-sand-100',
+                    )}
+                  >
+                    {missingCompanions} acompanhante{missingCompanions > 1 ? 's' : ''} sem dados
+                    cadastrados (reserva para {headcount} pessoas).
+                  </div>
+                )}
+              </Card>
+            )}
 
             {/* Folio */}
             <Card padding="none">
@@ -354,6 +400,14 @@ function ActionBar({
       </div>
     </div>
   );
+}
+
+function fmtDoc(type: string, num: string): string {
+  const digits = (num ?? '').replace(/\D/g, '');
+  if (type === 'CPF' && digits.length === 11) {
+    return `CPF ${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+  }
+  return `${type} ${num}`;
 }
 
 function ContactRow({ icon, text }: { icon: 'phone' | 'mail' | 'users'; text: string }) {
