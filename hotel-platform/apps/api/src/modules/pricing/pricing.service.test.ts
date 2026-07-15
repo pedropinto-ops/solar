@@ -92,6 +92,25 @@ describe('PricingService.quote — cotação completa', () => {
     expect(q.discountPercent).toBe(0);
   });
 
+  it('REGRESSÃO: diária POR ADULTO = perNight.adultRate (150), NÃO o avgDailyRate agregado (300)', async () => {
+    // A disponibilidade expõe "dailyRate" como diária por adulto (o front/assistente
+    // somam por pessoa). Usar avgDailyRate (total da noite p/ todos os hóspedes)
+    // dobrava o valor exibido: 2 adultos viravam 600 em vez de 300.
+    const svc = makeService();
+    const q = await svc.quote({
+      propertyId: 'p1',
+      roomTypeId: 'rt1',
+      basePrice: 150,
+      checkIn: d('2027-03-10'),
+      checkOut: d('2027-03-11'), // 1 noite
+      ages: [30, 30], // 2 adultos
+    });
+    const adultRate =
+      q.perNight.reduce((s, n) => s + n.adultRate, 0) / q.perNight.length;
+    expect(adultRate).toBe(150); // por adulto
+    expect(q.avgDailyRate).toBe(300); // agregado (2 adultos) — NÃO usar como "por adulto"
+  });
+
   it('mistura de idades numa noite: adulto + criança grátis + criança taxada', async () => {
     const svc = makeService();
     const q = await svc.quote({

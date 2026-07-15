@@ -162,6 +162,18 @@ export class RoomService {
           checkOut: checkOutDate,
           ages: Array.from({ length: guests }, () => 30),
         });
+        // Diária POR ADULTO (média por noite): o front e o assistente exibem/
+        // usam este campo como "por adulto/noite" e calculam o total por pessoa
+        // (Modelo A). NÃO usar avgDailyRate aqui: aquele é o total da noite para
+        // TODOS os hóspedes buscados (ex.: 2 adultos = 300), o que dobrava o
+        // valor estimado no front. adultRate médio = média de perNight.adultRate.
+        const adultDailyRate = quote.perNight.length
+          ? Math.round(
+              (quote.perNight.reduce((s, n) => s + n.adultRate, 0) /
+                quote.perNight.length) *
+                100,
+            ) / 100
+          : roomType.basePrice.toNumber();
         return {
           id: roomType.id,
           name: roomType.name,
@@ -172,8 +184,8 @@ export class RoomService {
           maxOccupancy: maxCap,
           bedConfig: roomType.bedConfig,
           sizeSqm: roomType.sizeSqm,
-          // Diária média por noite (pode variar por data). Referência de exibição.
-          dailyRate: quote.avgDailyRate || roomType.basePrice.toNumber(),
+          // Diária por ADULTO/noite (não o agregado dos hóspedes buscados).
+          dailyRate: adultDailyRate,
           // Estimativa MÁXIMA (todos adultos). Preço real é por pessoa/idade.
           totalAmount: quote.total,
           available: freeCaps.length,
