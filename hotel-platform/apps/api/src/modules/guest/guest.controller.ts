@@ -36,6 +36,7 @@ export class GuestController {
   constructor(private readonly guestService: GuestService) {}
 
   @Get()
+  @Roles('ADMIN', 'MANAGER', 'RECEPTION')
   async list(
     @CurrentUser() user: AuthenticatedUser,
     @Query('q') q?: string,
@@ -49,6 +50,7 @@ export class GuestController {
   }
 
   @Get('search')
+  @Roles('ADMIN', 'MANAGER', 'RECEPTION')
   async searchByDocument(
     @CurrentUser() user: AuthenticatedUser,
     @Query('document') document: string,
@@ -58,6 +60,7 @@ export class GuestController {
   }
 
   @Get(':id')
+  @Roles('ADMIN', 'MANAGER', 'RECEPTION')
   async getById(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.guestService.getById(user.propertyId, id);
   }

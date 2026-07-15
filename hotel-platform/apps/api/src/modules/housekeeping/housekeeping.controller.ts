@@ -40,6 +40,7 @@ export class HousekeepingController {
    * Para governanta — vê todas as tarefas com filtros.
    */
   @Get()
+  @Roles('ADMIN', 'MANAGER', 'HOUSEKEEPING_SUPERVISOR')
   async list(
     @CurrentUser() user: AuthenticatedUser,
     @Query('status') status?: string,
@@ -59,6 +60,7 @@ export class HousekeepingController {
    * Para camareira — tarefas atribuídas a ela.
    */
   @Get('my-tasks')
+  @Roles('ADMIN', 'MANAGER', 'HOUSEKEEPING_SUPERVISOR', 'HOUSEKEEPER')
   async myTasks(@CurrentUser() user: AuthenticatedUser) {
     return this.housekeeping.listMyTasks(user.propertyId, user.userId);
   }
@@ -67,11 +69,13 @@ export class HousekeepingController {
    * GET /cleaning-tasks/dashboard
    */
   @Get('dashboard')
+  @Roles('ADMIN', 'MANAGER', 'HOUSEKEEPING_SUPERVISOR')
   async dashboard(@CurrentUser() user: AuthenticatedUser) {
     return this.housekeeping.dashboard(user.propertyId);
   }
 
   @Get(':id')
+  @Roles('ADMIN', 'MANAGER', 'HOUSEKEEPING_SUPERVISOR', 'HOUSEKEEPER')
   async getById(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.housekeeping.getById(user.propertyId, id);
   }

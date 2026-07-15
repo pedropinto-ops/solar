@@ -1,4 +1,4 @@
-import { Controller, Get, Param, UseGuards } from '@nestjs/common';
+import { Controller, ForbiddenException, Get, Param, UseGuards } from '@nestjs/common';
 import { PropertyService } from './property.service.js';
 import { JwtAuthGuard, CurrentUser, AuthenticatedUser } from '../auth/auth.guards.js';
 
@@ -24,7 +24,7 @@ export class PropertyController {
   @Get(':id')
   async findOne(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     if (id !== user.propertyId) {
-      throw new Error('FORBIDDEN');
+      throw new ForbiddenException({ errorCode: 'FORBIDDEN', title: 'Acesso negado a esta propriedade' });
     }
     return this.propertyService.findById(id);
   }
