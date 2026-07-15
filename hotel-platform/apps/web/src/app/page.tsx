@@ -128,6 +128,26 @@ export default function HomePage() {
         </div>
       </main>
 
+      {/* Vídeo institucional */}
+      <section className="relative z-10 px-5 sm:px-8 pb-10 max-w-5xl mx-auto w-full">
+        <h2 className="font-serif-display text-xl sm:text-2xl text-ink-950 mb-1">Conheça o Solar Irará</h2>
+        <p className="text-sm text-ink-500 mb-3">
+          Um tour rápido pelo hotel — fachada, quartos, banheiro, café da manhã e os espaços de convivência.
+        </p>
+        <div className="rounded-xl overflow-hidden border border-sand-200 bg-black">
+          <video
+            controls
+            preload="metadata"
+            playsInline
+            poster="/video/tour-poster.jpg"
+            className="w-full h-auto block"
+          >
+            <source src="/video/tour.mp4" type="video/mp4" />
+            Seu navegador não suporta a exibição de vídeo.
+          </video>
+        </div>
+      </section>
+
       {/* Galeria */}
       {byCat.length > 0 && (
         <section className="relative z-10 px-5 sm:px-8 pb-8 max-w-5xl mx-auto w-full">
