@@ -81,11 +81,14 @@ export class PublicReservationService {
   }) {
     const { propertyId, propertySlug, ip, data } = params;
 
-    // Idempotência
+    // Idempotência — L1: cache em memória (rápido, por instância).
     const cacheKey = `${propertySlug}:${data.idempotencyKey}`;
+    // Marcador durável gravado em sourceDetails de cada reserva do pedido.
+    // Permite recuperar o mesmo pedido mesmo após restart / em multi-instância.
+    const idemTag = `idem:${data.idempotencyKey}`;
     const cached = this.idempotencyCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
-      this.logger.log(`Idempotency hit: ${cacheKey}`);
+      this.logger.log(`Idempotency hit (L1): ${cacheKey}`);
       return cached.result;
     }
 
@@ -100,6 +103,47 @@ export class PublicReservationService {
     }
 
     const result = await this.prisma.$transaction(async (tx) => {
+      // 0. Serializa a criação de reservas POR PROPRIEDADE. Torna o fluxo
+      //    "verifica disponibilidade → cria" atômico entre requisições
+      //    concorrentes. Sem isto, duas requisições simultâneas podem ambas
+      //    passar na checagem de conflito e alocar o MESMO quarto (o EXCLUDE
+      //    constraint do banco só cobre CONFIRMED/CHECKED_IN, não PENDING).
+      //    Lock advisory de transação: liberado no commit/rollback.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${propertyId}, 0))`;
+
+      // 0.1 Idempotência durável (L2): dentro do lock, se esta chave já gerou
+      //     reservas, devolve as MESMAS sem duplicar. Sobrevive a restart e é
+      //     seguro em multi-instância (o cache em memória sozinho não seria).
+      const priorByKey = await tx.reservation.findMany({
+        where: { propertyId, sourceDetails: { contains: idemTag } },
+        select: {
+          id: true,
+          code: true,
+          status: true,
+          totalAmount: true,
+          primaryGuest: true,
+        },
+        orderBy: { createdAt: 'asc' },
+      });
+      if (priorByKey.length > 0) {
+        this.logger.log(`Idempotency hit (L2/DB): ${cacheKey}`);
+        const grandTotal = priorByKey.reduce(
+          (s, r) => s + Number(r.totalAmount),
+          0,
+        );
+        return {
+          reservations: priorByKey.map((r) => ({
+            id: r.id,
+            code: r.code,
+            status: r.status,
+          })),
+          guest: priorByKey[0]!.primaryGuest,
+          grandTotal,
+          depositAmount: Math.round(grandTotal * 30) / 100,
+          idempotentHit: true,
+        };
+      }
+
       // 1. Valida RoomType
       const roomType = await tx.roomType.findFirst({
         where: { id: data.roomTypeId, propertyId, active: true },
@@ -249,7 +293,10 @@ export class PublicReservationService {
       //      até a capacidade REAL de cada quarto (allocCaps). Tudo na mesma
       //      transação (atômico). Com mais de um quarto, marca todas com o
       //      mesmo grupo em sourceDetails p/ a recepção correlacionar.
-      const groupTag = roomsNeeded > 1 ? `group:${data.idempotencyKey}` : null;
+      // sourceDetails carrega o marcador de idempotência (sempre) e, quando o
+      // pedido ocupa mais de um quarto, também o marcador de grupo p/ a recepção.
+      const groupTag =
+        roomsNeeded > 1 ? `${idemTag};group:${data.idempotencyKey}` : idemTag;
       const reservations: Array<{ id: string; code: string; status: string }> = [];
 
       let offset = 0;
@@ -342,6 +389,7 @@ export class PublicReservationService {
         guest: booker,
         grandTotal,
         depositAmount: Math.round(grandTotal * 30) / 100,
+        idempotentHit: false,
       };
     });
 
@@ -355,23 +403,27 @@ export class PublicReservationService {
       payment: null,
     };
 
-    // E-mail único de "solicitação recebida" (lista todos os quartos) —
-    // dispara e esquece. O EmailService engole qualquer erro internamente,
-    // mas o void + catch garante que uma rejeição jamais escape do fluxo.
-    void this.email
-      .sendReservationReceived(result.reservations.map((r) => r.id))
-      .catch((err) =>
-        this.logger.error(`Falha ao enviar e-mail de reserva: ${err?.message}`),
-      );
+    // Se foi um hit idempotente (mesma chave repetida), NÃO reenvia e-mail
+    // nem reescreve cache — apenas devolve o mesmo corpo.
+    if (!result.idempotentHit) {
+      // E-mail único de "solicitação recebida" (lista todos os quartos) —
+      // dispara e esquece. O EmailService engole qualquer erro internamente,
+      // mas o void + catch garante que uma rejeição jamais escape do fluxo.
+      void this.email
+        .sendReservationReceived(result.reservations.map((r) => r.id))
+        .catch((err) =>
+          this.logger.error(`Falha ao enviar e-mail de reserva: ${err?.message}`),
+        );
 
-    // Cacheia idempotência por 24h
-    this.idempotencyCache.set(cacheKey, {
-      result: responseBody,
-      expiresAt: Date.now() + 24 * 60 * 60 * 1000,
-    });
+      // Cacheia idempotência por 24h (L1)
+      this.idempotencyCache.set(cacheKey, {
+        result: responseBody,
+        expiresAt: Date.now() + 24 * 60 * 60 * 1000,
+      });
 
-    // Limpa cache antigo periodicamente (simples, não otimizado)
-    this.cleanExpiredCache();
+      // Limpa cache antigo periodicamente (simples, não otimizado)
+      this.cleanExpiredCache();
+    }
 
     return responseBody;
   }

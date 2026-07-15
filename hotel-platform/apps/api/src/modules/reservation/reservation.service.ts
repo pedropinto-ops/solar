@@ -9,9 +9,26 @@ import {
 import { PrismaService } from '../../common/prisma/prisma.service.js';
 import { AuditService } from '../../common/audit/audit.service.js';
 import { generateReservationCode } from '../../common/utils/reservation-code.js';
+import { ROOM_OCCUPYING_STATUSES } from '../room/room.service.js';
 import type { Prisma } from '@prisma/client';
 import { Prisma as P } from '@prisma/client';
 import { FNRH_REQUIRED_FIELDS } from '@hotel/shared/schemas';
+
+/**
+ * Distribui um valor total (em reais) por N noites de forma que a SOMA das
+ * parcelas seja idêntica ao total, ao centavo. Trabalha em centavos e joga os
+ * centavos de resto nas primeiras noites. Fonte da verdade das diárias no
+ * check-in — evita saldo residual que travava o check-out.
+ */
+export function distributeAmountToNights(total: number, nights: number): number[] {
+  if (nights <= 0) return [];
+  const totalCents = Math.round(total * 100);
+  const baseCents = Math.floor(totalCents / nights);
+  const remainderCents = totalCents - baseCents * nights;
+  return Array.from({ length: nights }, (_, i) =>
+    (baseCents + (i < remainderCents ? 1 : 0)) / 100,
+  );
+}
 
 @Injectable()
 export class ReservationService {
@@ -201,6 +218,11 @@ export class ReservationService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      // Serializa criação por propriedade (mesmo lock da reserva pública),
+      // fechando a corrida de overbooking entre reservas PENDING concorrentes
+      // que o EXCLUDE constraint não cobre.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${propertyId}, 0))`;
+
       // Valida room type
       const roomType = await tx.roomType.findFirst({
         where: { id: data.roomTypeId, propertyId, active: true },
@@ -242,7 +264,26 @@ export class ReservationService {
             title: 'Quarto inválido para esta categoria',
           });
         }
-        // Conflito de datas será capturado pela EXCLUDE constraint do banco
+        // Conflito explícito: o EXCLUDE constraint do banco só cobre
+        // CONFIRMED/CHECKED_IN. Uma reserva PENDING já alocada nesse quarto
+        // e período também o segura (ROOM_OCCUPYING_STATUSES) e precisa ser
+        // checada aqui — protegida pelo advisory lock acima.
+        const conflict = await tx.reservation.findFirst({
+          where: {
+            propertyId,
+            roomId: data.roomId,
+            checkInDate: { lt: data.checkOutDate },
+            checkOutDate: { gt: data.checkInDate },
+            status: { in: [...ROOM_OCCUPYING_STATUSES] },
+          },
+          select: { id: true },
+        });
+        if (conflict) {
+          throw new ConflictException({
+            errorCode: 'ROOM_NOT_AVAILABLE',
+            title: 'Quarto já reservado para o período selecionado',
+          });
+        }
       }
 
       // Valida company (se POSTPAID_CORPORATE)
@@ -350,6 +391,10 @@ export class ReservationService {
     const { propertyId, userId, reservationId, roomId } = params;
 
     return this.prisma.$transaction(async (tx) => {
+      // Mesmo lock por propriedade: serializa realocação vs. criação
+      // concorrente para o mesmo quarto/período.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${propertyId}, 0))`;
+
       const reservation = await tx.reservation.findFirst({
         where: { id: reservationId, propertyId },
       });
@@ -382,6 +427,26 @@ export class ReservationService {
         throw new BadRequestException({
           errorCode: 'VALIDATION_ERROR',
           title: 'Quarto pertence a categoria diferente da reserva',
+        });
+      }
+
+      // Conflito explícito (cobre PENDING, que o EXCLUDE não pega),
+      // ignorando a própria reserva.
+      const conflict = await tx.reservation.findFirst({
+        where: {
+          propertyId,
+          roomId,
+          id: { not: reservationId },
+          checkInDate: { lt: reservation.checkOutDate },
+          checkOutDate: { gt: reservation.checkInDate },
+          status: { in: [...ROOM_OCCUPYING_STATUSES] },
+        },
+        select: { id: true },
+      });
+      if (conflict) {
+        throw new ConflictException({
+          errorCode: 'ROOM_NOT_AVAILABLE',
+          title: 'Quarto já tem reserva conflitante neste período',
         });
       }
 
@@ -581,7 +646,14 @@ export class ReservationService {
   private async generateRoomNightCharges(
     tx: Prisma.TransactionClient,
     propertyId: string,
-    reservation: { id: string; checkInDate: Date; checkOutDate: Date; dailyRate: P.Decimal; roomType?: { name: string } | null },
+    reservation: {
+      id: string;
+      checkInDate: Date;
+      checkOutDate: Date;
+      dailyRate: P.Decimal;
+      totalAmount: P.Decimal;
+      roomType?: { name: string } | null;
+    },
     userId: string,
   ) {
     const existing = await tx.chargeItem.count({
@@ -593,21 +665,37 @@ export class ReservationService {
     const end = new Date(reservation.checkOutDate);
     const oneDay = 24 * 60 * 60 * 1000;
 
-    const charges: Prisma.ChargeItemCreateManyInput[] = [];
+    // Coleta as datas das noites.
+    const dates: string[] = [];
     for (let d = new Date(start); d < end; d = new Date(d.getTime() + oneDay)) {
-      const dateStr = d.toISOString().slice(0, 10);
-      charges.push({
+      dates.push(d.toISOString().slice(0, 10));
+    }
+    const nights = dates.length;
+    if (nights === 0) return;
+
+    // Distribui o TOTAL exato da reserva pelas noites, para que a soma das
+    // diárias seja idêntica ao totalAmount (evita saldo residual de centavos
+    // que travava o check-out). A dailyRate é apenas uma média; o total é a
+    // fonte da verdade.
+    const nightAmounts = distributeAmountToNights(
+      Number(reservation.totalAmount),
+      nights,
+    );
+
+    const charges: Prisma.ChargeItemCreateManyInput[] = dates.map((dateStr, i) => {
+      const nightAmount = new P.Decimal(nightAmounts[i]!);
+      return {
         propertyId,
         reservationId: reservation.id,
-        type: 'ROOM_NIGHT',
+        type: 'ROOM_NIGHT' as const,
         description: `Diária ${dateStr}`,
         quantity: new P.Decimal(1),
-        unitPrice: reservation.dailyRate,
-        totalAmount: reservation.dailyRate,
+        unitPrice: nightAmount,
+        totalAmount: nightAmount,
         registeredById: userId,
         registeredAt: new Date(),
-      });
-    }
+      };
+    });
 
     if (charges.length > 0) {
       await tx.chargeItem.createMany({ data: charges });

@@ -145,6 +145,10 @@ export class PricingService {
         discountName = p.name;
       }
     }
+    // Trava de segurança: um desconto mal cadastrado (ex.: 150% ou negativo)
+    // jamais deve zerar/inverter o preço. Limita a [0, 90].
+    if (discountPercent < 0) discountPercent = 0;
+    if (discountPercent > 90) discountPercent = 90;
     const factor = 1 - discountPercent / 100;
     const subtotal = round2(total);
     const finalTotal = round2(total * factor);

@@ -44,6 +44,35 @@ export const createPublicReservationSchema = z
   })
   .refine(
     (d) => {
+      // Check-in não pode ser no passado (compara por dia, em UTC).
+      const today = new Date();
+      today.setUTCHours(0, 0, 0, 0);
+      const ci = new Date(d.checkInDate);
+      ci.setUTCHours(0, 0, 0, 0);
+      return ci >= today;
+    },
+    {
+      message: 'A data de check-in não pode ser no passado',
+      path: ['checkInDate'],
+    },
+  )
+  .refine(
+    (d) => {
+      // Estadia máxima de 30 noites pela reserva pública (evita bloqueio
+      // acidental/malicioso de um quarto por meses).
+      const nights = Math.round(
+        (d.checkOutDate.getTime() - d.checkInDate.getTime()) /
+          (1000 * 60 * 60 * 24),
+      );
+      return nights <= 30;
+    },
+    {
+      message: 'A estadia pela reserva online é de no máximo 30 noites',
+      path: ['checkOutDate'],
+    },
+  )
+  .refine(
+    (d) => {
       const docs = [d.guest.documentNumber, ...d.companions.map((c) => c.documentNumber)].map(
         normDoc,
       );
