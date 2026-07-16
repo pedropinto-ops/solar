@@ -10,6 +10,8 @@ import {
   useHousekeepingDashboard,
   useApproveCleaning,
   useRejectCleaning,
+  useAssignCleaning,
+  useStaff,
   type CleaningTask,
 } from '@/lib/hooks';
 import { ApiError } from '@/lib/api-client';
@@ -176,7 +178,10 @@ function TaskRow({
         </div>
 
         {/* Ações */}
-        <div className="flex gap-2 shrink-0">
+        <div className="flex gap-2 shrink-0 flex-wrap md:justify-end items-start">
+          {(task.status === 'PENDING' || task.status === 'REJECTED') && (
+            <AssignControl task={task} onError={onError} />
+          )}
           {task.status === 'AWAITING_INSPECTION' && (
             <>
               <Button
@@ -202,5 +207,58 @@ function TaskRow({
       </div>
 
     </Card>
+  );
+}
+
+/**
+ * Seletor de camareira + botão para atribuir uma limpeza PENDENTE. Sem isto,
+ * uma limpeza sem camareira fica presa: ela só aparece (e pode ser iniciada)
+ * na tela "Minha limpeza" DEPOIS de atribuída a alguém.
+ */
+function AssignControl({
+  task,
+  onError,
+}: {
+  task: CleaningTask;
+  onError: (e: string | null) => void;
+}) {
+  const { data: staff } = useStaff('HOUSEKEEPER');
+  const assign = useAssignCleaning();
+  const [selected, setSelected] = useState(task.assignedToId ?? '');
+
+  async function doAssign() {
+    if (!selected) return;
+    onError(null);
+    try {
+      await assign.mutateAsync({ taskId: task.id, userId: selected });
+    } catch (err) {
+      onError(err instanceof ApiError ? err.message : 'Erro ao atribuir');
+    }
+  }
+
+  const camareiras = staff ?? [];
+  return (
+    <div className="flex gap-2 items-center">
+      <select
+        value={selected}
+        onChange={(e) => setSelected(e.target.value)}
+        className="text-sm rounded-lg border border-sand-200 px-2 py-2 bg-cream min-h-touch-sm max-w-[9rem]"
+        aria-label="Escolher camareira"
+      >
+        <option value="">Camareira…</option>
+        {camareiras.map((u) => (
+          <option key={u.id} value={u.id}>
+            {u.name}
+          </option>
+        ))}
+      </select>
+      <Button
+        size="sm"
+        onClick={doAssign}
+        disabled={!selected || selected === task.assignedToId || assign.isPending}
+      >
+        {task.assignedToId ? 'Reatribuir' : 'Atribuir'}
+      </Button>
+    </div>
   );
 }

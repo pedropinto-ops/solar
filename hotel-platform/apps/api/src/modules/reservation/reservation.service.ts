@@ -10,6 +10,7 @@ import { PrismaService } from '../../common/prisma/prisma.service.js';
 import { AuditService } from '../../common/audit/audit.service.js';
 import { generateReservationCode } from '../../common/utils/reservation-code.js';
 import { ROOM_OCCUPYING_STATUSES } from '../room/room.service.js';
+import { EmailService } from '../email/email.service.js';
 import type { Prisma } from '@prisma/client';
 import { Prisma as P } from '@prisma/client';
 import { FNRH_REQUIRED_FIELDS } from '@hotel/shared/schemas';
@@ -37,6 +38,7 @@ export class ReservationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly email: EmailService,
   ) {}
 
   // ===========================================================
@@ -217,7 +219,7 @@ export class ReservationService {
       });
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const created = await this.prisma.$transaction(async (tx) => {
       // Serializa criação por propriedade (mesmo lock da reserva pública),
       // fechando a corrida de overbooking entre reservas PENDING concorrentes
       // que o EXCLUDE constraint não cobre.
@@ -376,6 +378,16 @@ export class ReservationService {
         throw err;
       }
     });
+
+    // Aviso à GESTÃO de nova reserva (recepção) — dispara e esquece, nunca
+    // derruba a criação.
+    void this.email
+      .sendNewReservationToManagement([created.id])
+      .catch((err) =>
+        this.logger.error(`Falha ao avisar a gestão da reserva: ${err?.message}`),
+      );
+
+    return created;
   }
 
   // ===========================================================

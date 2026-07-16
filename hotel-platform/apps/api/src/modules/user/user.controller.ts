@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Param,
   Patch,
@@ -36,13 +37,21 @@ export class UserController {
    * Restrito à gestão (dados da equipe).
    */
   @Get()
-  @Roles('ADMIN', 'MANAGER')
+  // A governanta também precisa do SELETOR de camareiras (?role=HOUSEKEEPER)
+  // para atribuir limpezas. A lista de GESTÃO (?scope=all) segue só p/ ADMIN/MANAGER.
+  @Roles('ADMIN', 'MANAGER', 'HOUSEKEEPING_SUPERVISOR')
   async list(
     @CurrentUser() user: AuthenticatedUser,
     @Query('role') role?: string,
     @Query('scope') scope?: string,
   ) {
     if (scope === 'all') {
+      if (!['ADMIN', 'MANAGER'].includes(user.role)) {
+        throw new ForbiddenException({
+          errorCode: 'FORBIDDEN',
+          title: 'Lista de gestão restrita a administradores.',
+        });
+      }
       return this.userService.listForManagement(user.propertyId);
     }
     return this.userService.listStaff({ propertyId: user.propertyId, role });

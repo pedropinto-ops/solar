@@ -419,6 +419,13 @@ export class PublicReservationService {
           this.logger.error(`Falha ao enviar e-mail de reserva: ${err?.message}`),
         );
 
+      // Aviso à GESTÃO de que entrou uma nova reserva — dispara e esquece.
+      void this.email
+        .sendNewReservationToManagement(result.reservations.map((r) => r.id))
+        .catch((err) =>
+          this.logger.error(`Falha ao avisar a gestão da reserva: ${err?.message}`),
+        );
+
       // Cacheia idempotência por 24h (L1)
       this.idempotencyCache.set(cacheKey, {
         result: responseBody,

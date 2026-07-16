@@ -190,6 +190,66 @@ export class EmailService {
       return false;
     }
   }
+
+  /**
+   * Aviso à GESTÃO de que entrou uma nova reserva (além do e-mail ao hóspede).
+   * Vai para o e-mail do hotel (Property.email). "Dispara e esquece" — nunca lança.
+   */
+  async sendNewReservationToManagement(reservationIds: string[]): Promise<void> {
+    try {
+      if (!reservationIds.length) return;
+      const rs = await this.prisma.reservation.findMany({
+        where: { id: { in: reservationIds } },
+        orderBy: { code: 'asc' },
+        select: {
+          code: true,
+          checkInDate: true,
+          checkOutDate: true,
+          nights: true,
+          adults: true,
+          children: true,
+          totalAmount: true,
+          source: true,
+          primaryGuest: { select: { fullName: true, email: true, phone: true } },
+          roomType: { select: { name: true } },
+          property: { select: { name: true, email: true, primaryColor: true } },
+        },
+      });
+      const first = rs[0];
+      if (!first) return;
+      const to = first.property.email;
+      if (!to) {
+        this.logger.log('Sem e-mail de gestão (Property.email) — pulei aviso de nova reserva.');
+        return;
+      }
+      const rooms = rs.length;
+      const grandTotal = rs.reduce((s, r) => s + Number(r.totalAmount), 0);
+      const html = newReservationManagementTemplate({
+        propertyName: first.property.name,
+        color: first.property.primaryColor ?? '#9E4620',
+        codes: rs.map((r) => r.code),
+        guestName: first.primaryGuest?.fullName ?? '—',
+        guestEmail: first.primaryGuest?.email ?? null,
+        guestPhone: first.primaryGuest?.phone ?? null,
+        checkIn: fmtDate(first.checkInDate),
+        checkOut: fmtDate(first.checkOutDate),
+        nights: first.nights,
+        guests: first.adults + first.children,
+        rooms,
+        roomType: first.roomType.name,
+        source: first.source,
+        total: grandTotal,
+      });
+      const subject = `Nova reserva — ${first.property.name} (${first.code}${
+        rooms > 1 ? ` +${rooms - 1}` : ''
+      })`;
+      await this.send({ to, subject, html });
+    } catch (err) {
+      this.logger.error(
+        `sendNewReservationToManagement falhou para [${reservationIds.join(', ')}]: ${(err as Error).message}`,
+      );
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -215,6 +275,71 @@ const CLEANING_TYPE_LABEL: Record<string, string> = {
   DEEP: 'Faxina',
   MAINTENANCE: 'Manutenção',
 };
+
+const SOURCE_LABEL: Record<string, string> = {
+  DIRECT: 'Reserva online (site)',
+  RECEPTION: 'Recepção',
+  PHONE: 'Telefone',
+  WHATSAPP: 'WhatsApp',
+  OTA: 'OTA',
+  WALK_IN: 'Walk-in',
+};
+
+function newReservationManagementTemplate(d: {
+  propertyName: string;
+  color: string;
+  codes: string[];
+  guestName: string;
+  guestEmail: string | null;
+  guestPhone: string | null;
+  checkIn: string;
+  checkOut: string;
+  nights: number;
+  guests: number;
+  rooms: number;
+  roomType: string;
+  source: string;
+  total: number;
+}): string {
+  const row = (label: string, value: string) => `
+    <tr>
+      <td style="padding:7px 0;color:#6b7280;font-size:14px;">${label}</td>
+      <td style="padding:7px 0;color:#111827;font-size:14px;font-weight:600;text-align:right;">${value}</td>
+    </tr>`;
+  const contato = [d.guestPhone, d.guestEmail].filter(Boolean).join(' · ') || '—';
+
+  return `<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head>
+<body style="margin:0;background:#f5f3ee;font-family:Arial,Helvetica,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f3ee;padding:24px 0;">
+    <tr><td align="center">
+      <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="background:#fffdf8;border:1px solid #e7e1d5;border-radius:16px;overflow:hidden;max-width:560px;width:100%;">
+        <tr><td style="background:${d.color};padding:22px 28px;">
+          <div style="color:#fffdf8;font-size:20px;font-weight:700;">${d.propertyName}</div>
+          <div style="color:rgba(255,253,248,.85);font-size:13px;margin-top:2px;">Nova reserva recebida</div>
+        </td></tr>
+        <tr><td style="padding:24px 28px;">
+          <div style="color:#111827;font-size:16px;font-weight:700;margin-bottom:4px;">${d.guestName}</div>
+          <div style="color:#6b7280;font-size:13px;margin-bottom:16px;">${contato}</div>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+            ${row('Código', d.codes.join(', '))}
+            ${row('Origem', SOURCE_LABEL[d.source] ?? d.source)}
+            ${row('Acomodação', d.rooms > 1 ? `${d.rooms} × ${d.roomType}` : d.roomType)}
+            ${row('Check-in', d.checkIn)}
+            ${row('Check-out', d.checkOut)}
+            ${row('Noites', String(d.nights))}
+            ${row('Hóspedes', String(d.guests))}
+            ${row('Total das diárias', fmtBRL(d.total))}
+          </table>
+        </td></tr>
+        <tr><td style="padding:0 28px 22px;color:#9ca3af;font-size:12px;line-height:1.5;">
+          A reserva ainda é uma SOLICITAÇÃO — confirme com o hóspede e aloque/valide pela recepção. Aviso automático do sistema.
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+}
 
 function overdueCleaningTemplate(d: {
   propertyName: string;
