@@ -630,6 +630,10 @@ model CleaningTask {
   notes           String?
   checklist       Json?                              // respostas do checklist da camareira
 
+  // Marcado quando a governanta já foi notificada de que a limpeza está
+  // pendente há mais de 24h (evita avisar a mesma tarefa repetidamente).
+  overdueNotifiedAt DateTime?
+
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 

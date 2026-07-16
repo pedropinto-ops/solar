@@ -54,6 +54,30 @@ export default function HousekeepingPage() {
           </div>
         )}
 
+        {/* Alerta: limpezas pendentes há mais de 24h (a governanta também
+            recebe por e-mail). */}
+        {dash && dash.overdue.count > 0 && (
+          <div className="bg-amber-50 border border-amber-300 rounded-xl p-4">
+            <div className="flex items-start gap-3">
+              <span className="text-amber-600 text-xl leading-none mt-0.5" aria-hidden="true">
+                ⚠️
+              </span>
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-amber-900">
+                  {dash.overdue.count} limpeza{dash.overdue.count > 1 ? 's' : ''} pendente
+                  {dash.overdue.count > 1 ? 's' : ''} há mais de 24h
+                </div>
+                <div className="text-xs text-amber-800 mt-1">
+                  {dash.overdue.rooms
+                    .map((r) => `Quarto ${r.number} (${r.hours}h)`)
+                    .join(' · ')}
+                  {dash.overdue.count > dash.overdue.rooms.length ? ' · …' : ''}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg p-3">
             {error}

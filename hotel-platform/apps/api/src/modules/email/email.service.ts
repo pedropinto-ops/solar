@@ -162,6 +162,34 @@ export class EmailService {
       );
     }
   }
+
+  /**
+   * Alerta operacional para a governanta: limpezas pendentes há mais de 24h.
+   * "Dispara e esquece" — nunca lança. Retorna true se enviou de fato.
+   */
+  async sendOverdueCleaningAlert(params: {
+    to: string;
+    propertyName: string;
+    color?: string;
+    tasks: Array<{ roomNumber: string; hoursPending: number; type: string }>;
+  }): Promise<boolean> {
+    try {
+      if (!params.to || params.tasks.length === 0) return false;
+      const n = params.tasks.length;
+      const html = overdueCleaningTemplate({
+        propertyName: params.propertyName,
+        color: params.color ?? '#9E4620',
+        tasks: params.tasks,
+      });
+      const subject = `⚠️ ${n} limpeza${n > 1 ? 's' : ''} pendente${
+        n > 1 ? 's' : ''
+      } há mais de 24h — ${params.propertyName}`;
+      return await this.send({ to: params.to, subject, html });
+    } catch (err) {
+      this.logger.error(`sendOverdueCleaningAlert falhou: ${(err as Error).message}`);
+      return false;
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -179,6 +207,58 @@ function fmtDate(d: Date): string {
 
 function fmtBRL(n: number): string {
   return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+const CLEANING_TYPE_LABEL: Record<string, string> = {
+  CHECKOUT: 'Pós-checkout',
+  DAILY: 'Diária',
+  DEEP: 'Faxina',
+  MAINTENANCE: 'Manutenção',
+};
+
+function overdueCleaningTemplate(d: {
+  propertyName: string;
+  color: string;
+  tasks: Array<{ roomNumber: string; hoursPending: number; type: string }>;
+}): string {
+  const rows = d.tasks
+    .map(
+      (t) => `
+    <tr>
+      <td style="padding:10px 0;border-bottom:1px solid #eee7db;color:#111827;font-size:15px;font-weight:600;">Quarto ${t.roomNumber}</td>
+      <td style="padding:10px 0;border-bottom:1px solid #eee7db;color:#6b7280;font-size:13px;">${CLEANING_TYPE_LABEL[t.type] ?? t.type}</td>
+      <td style="padding:10px 0;border-bottom:1px solid #eee7db;color:#b45309;font-size:14px;font-weight:700;text-align:right;">há ${t.hoursPending}h</td>
+    </tr>`,
+    )
+    .join('');
+  const n = d.tasks.length;
+
+  return `<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head>
+<body style="margin:0;background:#f5f3ee;font-family:Arial,Helvetica,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f3ee;padding:24px 0;">
+    <tr><td align="center">
+      <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="background:#fffdf8;border:1px solid #e7e1d5;border-radius:16px;overflow:hidden;max-width:560px;width:100%;">
+        <tr><td style="background:${d.color};padding:24px 28px;">
+          <div style="color:#fffdf8;font-size:20px;font-weight:700;letter-spacing:.3px;">${d.propertyName}</div>
+          <div style="color:rgba(255,253,248,.85);font-size:13px;margin-top:2px;">Governança · alerta de limpeza</div>
+        </td></tr>
+        <tr><td style="padding:26px 28px;">
+          <div style="color:#111827;font-size:16px;font-weight:700;margin-bottom:6px;">${n} limpeza${n > 1 ? 's' : ''} pendente${n > 1 ? 's' : ''} há mais de 24 horas</div>
+          <div style="color:#6b7280;font-size:14px;line-height:1.5;margin-bottom:18px;">
+            ${n > 1 ? 'Estes quartos continuam' : 'Este quarto continua'} aguardando limpeza há mais de um dia. Vale acompanhar com a equipe.
+          </div>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+            ${rows}
+          </table>
+        </td></tr>
+        <tr><td style="padding:0 28px 24px;color:#9ca3af;font-size:12px;line-height:1.5;">
+          Aviso automático do sistema. Você recebe este e-mail porque é responsável pela governança do hotel.
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
 }
 
 function reservationReceivedTemplate(d: {

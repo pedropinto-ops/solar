@@ -108,24 +108,37 @@ export class HousekeepingService {
     const tomorrow = new Date(today);
     tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
 
-    const [pending, inProgress, awaitingInspection, completedToday] = await Promise.all([
-      this.prisma.cleaningTask.count({
-        where: { propertyId, status: 'PENDING' },
-      }),
-      this.prisma.cleaningTask.count({
-        where: { propertyId, status: 'IN_PROGRESS' },
-      }),
-      this.prisma.cleaningTask.count({
-        where: { propertyId, status: 'AWAITING_INSPECTION' },
-      }),
-      this.prisma.cleaningTask.count({
-        where: {
-          propertyId,
-          status: 'COMPLETED',
-          inspectedAt: { gte: today, lt: tomorrow },
-        },
-      }),
-    ]);
+    // Limite de atraso: limpeza PENDING criada há mais de 24h.
+    const overdueCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    const [pending, inProgress, awaitingInspection, completedToday, overdueCount, overdueTasks] =
+      await Promise.all([
+        this.prisma.cleaningTask.count({
+          where: { propertyId, status: 'PENDING' },
+        }),
+        this.prisma.cleaningTask.count({
+          where: { propertyId, status: 'IN_PROGRESS' },
+        }),
+        this.prisma.cleaningTask.count({
+          where: { propertyId, status: 'AWAITING_INSPECTION' },
+        }),
+        this.prisma.cleaningTask.count({
+          where: {
+            propertyId,
+            status: 'COMPLETED',
+            inspectedAt: { gte: today, lt: tomorrow },
+          },
+        }),
+        this.prisma.cleaningTask.count({
+          where: { propertyId, status: 'PENDING', createdAt: { lte: overdueCutoff } },
+        }),
+        this.prisma.cleaningTask.findMany({
+          where: { propertyId, status: 'PENDING', createdAt: { lte: overdueCutoff } },
+          select: { id: true, createdAt: true, room: { select: { number: true } } },
+          orderBy: { createdAt: 'asc' },
+          take: 10,
+        }),
+      ]);
 
     // Tempo médio de limpeza (últimas 30 tarefas completadas)
     const recent = await this.prisma.cleaningTask.findMany({
@@ -146,12 +159,22 @@ export class HousekeepingService {
           )
         : null;
 
+    const nowMs = Date.now();
     return {
       pending,
       inProgress,
       awaitingInspection,
       completedToday,
       avgDurationMinutes: avgDuration,
+      // Limpezas pendentes há mais de 24h — a governanta também é avisada por
+      // e-mail (cron), mas aqui o painel mostra ao vivo.
+      overdue: {
+        count: overdueCount,
+        rooms: overdueTasks.map((t) => ({
+          number: t.room?.number ?? '—',
+          hours: Math.floor((nowMs - t.createdAt.getTime()) / (60 * 60 * 1000)),
+        })),
+      },
     };
   }
 

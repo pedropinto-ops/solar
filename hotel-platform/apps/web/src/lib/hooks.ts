@@ -375,6 +375,10 @@ export interface HousekeepingDashboard {
   awaitingInspection: number;
   completedToday: number;
   avgDurationMinutes: number | null;
+  overdue: {
+    count: number;
+    rooms: Array<{ number: string; hours: number }>;
+  };
 }
 
 export function useCleaningTasks(params: { status?: string; assignedTo?: string } = {}) {
