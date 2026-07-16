@@ -1,9 +1,15 @@
+import { setDefaultResultOrder } from 'node:dns';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import compression from 'compression';
 import { AppModule } from './app.module.js';
+
+// Containers sem saída IPv6 (ex.: Railway): o Node tentava conectar no SMTP
+// (smtp.gmail.com) via IPv6 e falhava com ENETUNREACH. Priorizar IPv4 resolve.
+// Não afeta o Prisma/Neon, que usa resolvedor próprio (engine Rust).
+setDefaultResultOrder('ipv4first');
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
