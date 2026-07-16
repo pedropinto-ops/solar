@@ -1,12 +1,22 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import * as nodemailer from 'nodemailer';
+import type { Transporter } from 'nodemailer';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
 
 /**
- * Envio de e-mails transacionais via Resend (https://resend.com).
+ * Envio de e-mails transacionais via SMTP (Google Workspace / Gmail).
  *
- * DESLIGADO por padrão: sem RESEND_API_KEY configurado, os métodos apenas
- * registram log e retornam — não quebram nada. Mesmo padrão do Asaas.
+ * DESLIGADO por padrão: sem SMTP_USER/SMTP_PASS, os métodos apenas registram
+ * log e retornam — não quebram nada.
+ *
+ * Variáveis de ambiente (Railway):
+ *   SMTP_HOST  — padrão "smtp.gmail.com"
+ *   SMTP_PORT  — padrão 587 (STARTTLS); use 465 para SSL
+ *   SMTP_USER  — a caixa que autentica (ex.: solarirara@gpcbahia.com.br)
+ *   SMTP_PASS  — SENHA DE APP do Google (exige verificação em 2 etapas ativa)
+ *   EMAIL_FROM — ex.: "Solar Irará Hotel <solarirara@gpcbahia.com.br>".
+ *                O endereço PRECISA ser o SMTP_USER (ou um alias "Enviar como").
  *
  * REGRA DE OURO: nenhum método aqui pode lançar exceção para o chamador.
  * O envio é sempre "dispara e esquece" após a reserva já estar gravada, então
@@ -15,27 +25,38 @@ import { PrismaService } from '../../common/prisma/prisma.service.js';
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
-  private readonly apiKey: string;
   private readonly from: string;
+  private readonly transporter: Transporter | null;
 
   constructor(
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
   ) {
-    this.apiKey = this.config.get<string>('RESEND_API_KEY', '');
+    const host = this.config.get<string>('SMTP_HOST', 'smtp.gmail.com');
+    const port = Number(this.config.get<string>('SMTP_PORT', '587'));
+    const user = this.config.get<string>('SMTP_USER', '');
+    const pass = this.config.get<string>('SMTP_PASS', '');
     this.from = this.config.get<string>(
       'EMAIL_FROM',
-      'Solar Irará Hotel <onboarding@resend.dev>',
+      user ? `Solar Irará Hotel <${user}>` : 'Solar Irará Hotel',
     );
-    if (!this.apiKey) {
+    if (user && pass) {
+      this.transporter = nodemailer.createTransport({
+        host,
+        port,
+        secure: port === 465, // 465 = SSL direto; 587 = STARTTLS
+        auth: { user, pass },
+      });
+    } else {
+      this.transporter = null;
       this.logger.warn(
-        '⚠️  RESEND_API_KEY não configurado — e-mails NÃO serão enviados (apenas log).',
+        '⚠️  SMTP não configurado (SMTP_USER/SMTP_PASS) — e-mails NÃO serão enviados (apenas log).',
       );
     }
   }
 
   get enabled(): boolean {
-    return Boolean(this.apiKey);
+    return this.transporter !== null;
   }
 
   /**
@@ -46,31 +67,17 @@ export class EmailService {
     subject: string;
     html: string;
   }): Promise<boolean> {
-    if (!this.enabled) {
+    if (!this.transporter) {
       this.logger.log(`[e-mail desligado] Para: ${params.to} — ${params.subject}`);
       return false;
     }
     try {
-      const res = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          from: this.from,
-          to: [params.to],
-          subject: params.subject,
-          html: params.html,
-        }),
+      await this.transporter.sendMail({
+        from: this.from,
+        to: params.to,
+        subject: params.subject,
+        html: params.html,
       });
-      if (!res.ok) {
-        const body = await res.text().catch(() => '');
-        this.logger.error(
-          `Falha ao enviar e-mail para ${params.to} (HTTP ${res.status}): ${body}`,
-        );
-        return false;
-      }
       this.logger.log(`E-mail enviado para ${params.to} — ${params.subject}`);
       return true;
     } catch (err) {
