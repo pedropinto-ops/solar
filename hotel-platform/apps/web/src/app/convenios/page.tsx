@@ -314,20 +314,24 @@ function InvoicesSection() {
   const { data: invoices, isLoading } = useInvoices();
   const pay = usePayInvoice();
   const cancel = useCancelInvoice();
-  const [busy, setBusy] = useState<string | null>(null);
+  const [ask, setAsk] = useState<{ action: 'pay' | 'cancel'; inv: Invoice } | null>(null);
+  const busyId = pay.isPending || cancel.isPending ? ask?.inv.id : null;
 
-  async function doPay(inv: Invoice) {
-    if (!confirm(`Registrar o pagamento da fatura ${inv.number} (${money(inv.totalAmount)})?`)) return;
-    setBusy(inv.id);
-    try { await pay.mutateAsync({ id: inv.id }); } finally { setBusy(null); }
-  }
-  async function doCancel(inv: Invoice) {
-    if (!confirm(`Cancelar a fatura ${inv.number}? As reservas voltam a ficar em aberto.`)) return;
-    setBusy(inv.id);
-    try { await cancel.mutateAsync(inv.id); } finally { setBusy(null); }
+  async function run() {
+    if (!ask) return;
+    const { action, inv } = ask;
+    try {
+      if (action === 'pay') await pay.mutateAsync({ id: inv.id });
+      else await cancel.mutateAsync(inv.id);
+      setAsk(null);
+    } catch {
+      /* mantém o modal aberto; erro raro aqui */
+      setAsk(null);
+    }
   }
 
   return (
+    <>
     <section className="space-y-3">
       <h2 className="text-sm font-semibold text-ink-700">Faturas</h2>
       {isLoading ? (
@@ -357,8 +361,8 @@ function InvoicesSection() {
                     </div>
                     {inv.status !== 'PAID' && inv.status !== 'CANCELLED' && (
                       <div className="flex gap-1">
-                        <Button size="sm" onClick={() => doPay(inv)} disabled={busy === inv.id}>Registrar pagamento</Button>
-                        <Button size="sm" variant="ghost" onClick={() => doCancel(inv)} disabled={busy === inv.id}>Cancelar</Button>
+                        <Button size="sm" onClick={() => setAsk({ action: 'pay', inv })} disabled={busyId === inv.id}>Registrar pagamento</Button>
+                        <Button size="sm" variant="ghost" onClick={() => setAsk({ action: 'cancel', inv })} disabled={busyId === inv.id}>Cancelar</Button>
                       </div>
                     )}
                   </div>
@@ -369,6 +373,29 @@ function InvoicesSection() {
         </div>
       )}
     </section>
+    {ask && (
+      <Sheet
+        open
+        onClose={() => setAsk(null)}
+        title={ask.action === 'pay' ? 'Registrar pagamento' : 'Cancelar fatura'}
+        maxWidth="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-ink-700">
+            {ask.action === 'pay'
+              ? `Confirmar o pagamento da fatura ${ask.inv.number} (${money(ask.inv.totalAmount)})? As reservas serão quitadas.`
+              : `Cancelar a fatura ${ask.inv.number}? As reservas voltam a ficar em aberto.`}
+          </p>
+          <div className="flex gap-2">
+            <Button fullWidth onClick={run} disabled={pay.isPending || cancel.isPending}>
+              {pay.isPending || cancel.isPending ? 'Processando…' : 'Confirmar'}
+            </Button>
+            <Button fullWidth variant="secondary" onClick={() => setAsk(null)}>Voltar</Button>
+          </div>
+        </div>
+      </Sheet>
+    )}
+    </>
   );
 }
 
