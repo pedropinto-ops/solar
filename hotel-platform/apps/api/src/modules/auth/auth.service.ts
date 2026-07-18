@@ -7,7 +7,8 @@ import type { LoginInput } from '@hotel/shared/schemas';
 
 export interface JwtPayload {
   sub: string; // userId
-  email: string;
+  email: string | null;
+  username: string | null;
   role: string;
   propertyId: string;
 }
@@ -42,8 +43,10 @@ export class AuthService {
   }
 
   async login(dto: LoginInput) {
-    const user = await this.prisma.user.findUnique({
-      where: { email: dto.email },
+    // Aceita nome de usuário OU e-mail no campo "login".
+    const login = dto.login.trim();
+    const user = await this.prisma.user.findFirst({
+      where: { OR: [{ username: login }, { email: login }] },
     });
 
     if (!user || !user.active) {
@@ -71,6 +74,7 @@ export class AuthService {
     const payload: JwtPayload = {
       sub: user.id,
       email: user.email,
+      username: user.username,
       role: user.role,
       propertyId: user.propertyId,
     };
@@ -84,6 +88,7 @@ export class AuthService {
       user: {
         id: user.id,
         email: user.email,
+        username: user.username,
         name: user.name,
         role: user.role,
         propertyId: user.propertyId,

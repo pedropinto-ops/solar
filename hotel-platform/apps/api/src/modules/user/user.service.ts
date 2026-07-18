@@ -51,6 +51,7 @@ export class UserService {
       select: {
         id: true,
         name: true,
+        username: true,
         email: true,
         phone: true,
         role: true,
@@ -64,7 +65,14 @@ export class UserService {
   async create(params: {
     propertyId: string;
     actor: { userId: string; role: string };
-    data: { email: string; password: string; name: string; phone?: string; role: string };
+    data: {
+      username: string;
+      email?: string;
+      password: string;
+      name: string;
+      phone?: string;
+      role: string;
+    };
   }) {
     const { propertyId, actor, data } = params;
 
@@ -75,25 +83,38 @@ export class UserService {
       });
     }
 
-    const existing = await this.prisma.user.findUnique({ where: { email: data.email } });
-    if (existing) {
+    const username = data.username.trim();
+    const email = data.email?.trim() || null;
+
+    const dupUser = await this.prisma.user.findUnique({ where: { username } });
+    if (dupUser) {
       throw new ConflictException({
-        errorCode: 'EMAIL_IN_USE',
-        title: 'Já existe um usuário com esse e-mail.',
+        errorCode: 'USERNAME_IN_USE',
+        title: 'Já existe um usuário com esse nome de login.',
       });
+    }
+    if (email) {
+      const dupEmail = await this.prisma.user.findUnique({ where: { email } });
+      if (dupEmail) {
+        throw new ConflictException({
+          errorCode: 'EMAIL_IN_USE',
+          title: 'Já existe um usuário com esse e-mail.',
+        });
+      }
     }
 
     const user = await this.prisma.user.create({
       data: {
         propertyId,
-        email: data.email,
+        username,
+        email,
         passwordHash: AuthService.hashPassword(data.password),
         name: data.name,
         phone: data.phone ?? null,
         role: data.role as any,
         active: true,
       },
-      select: { id: true, name: true, email: true, role: true, active: true },
+      select: { id: true, name: true, username: true, email: true, role: true, active: true },
     });
 
     await this.audit.log({
@@ -102,7 +123,7 @@ export class UserService {
       action: 'user.created',
       entityType: 'User',
       entityId: user.id,
-      changes: { email: user.email, role: user.role },
+      changes: { username: user.username, role: user.role },
     });
 
     return user;
@@ -112,13 +133,42 @@ export class UserService {
     propertyId: string;
     actor: { userId: string; role: string };
     userId: string;
-    data: { name?: string; phone?: string; role?: string; active?: boolean };
+    data: {
+      username?: string;
+      email?: string;
+      name?: string;
+      phone?: string;
+      role?: string;
+      active?: boolean;
+    };
   }) {
     const { propertyId, actor, userId, data } = params;
 
     const target = await this.prisma.user.findFirst({ where: { id: userId, propertyId } });
     if (!target) {
       throw new NotFoundException({ errorCode: 'NOT_FOUND', title: 'Usuário não encontrado.' });
+    }
+
+    // Unicidade de username / e-mail (se mudaram)
+    const username = data.username != null ? data.username.trim() : undefined;
+    const email = data.email !== undefined ? data.email.trim() || null : undefined;
+    if (username && username !== target.username) {
+      const dup = await this.prisma.user.findFirst({ where: { username, id: { not: userId } } });
+      if (dup) {
+        throw new ConflictException({
+          errorCode: 'USERNAME_IN_USE',
+          title: 'Já existe um usuário com esse nome de login.',
+        });
+      }
+    }
+    if (email && email !== target.email) {
+      const dup = await this.prisma.user.findFirst({ where: { email, id: { not: userId } } });
+      if (dup) {
+        throw new ConflictException({
+          errorCode: 'EMAIL_IN_USE',
+          title: 'Já existe um usuário com esse e-mail.',
+        });
+      }
     }
 
     // Precisa poder gerenciar o cargo ATUAL do alvo…
@@ -155,12 +205,14 @@ export class UserService {
     const updated = await this.prisma.user.update({
       where: { id: userId },
       data: {
+        ...(username !== undefined ? { username } : {}),
+        ...(email !== undefined ? { email } : {}),
         ...(data.name !== undefined ? { name: data.name } : {}),
         ...(data.phone !== undefined ? { phone: data.phone } : {}),
         ...(data.role !== undefined ? { role: data.role as any } : {}),
         ...(data.active !== undefined ? { active: data.active } : {}),
       },
-      select: { id: true, name: true, email: true, role: true, active: true },
+      select: { id: true, name: true, username: true, email: true, role: true, active: true },
     });
 
     await this.audit.log({

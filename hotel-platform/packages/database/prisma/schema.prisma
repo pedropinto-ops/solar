@@ -122,7 +122,8 @@ model User {
   id            String   @id @default(cuid())
   propertyId    String
 
-  email         String   @unique
+  username      String?  @unique   // login sem e-mail (opcional; único quando presente)
+  email         String?  @unique   // opcional — pode logar só com username
   passwordHash  String
   name          String
   phone         String?

@@ -9,12 +9,12 @@ import { APP_VERSION } from '@/lib/version';
 
 interface AuthResponse {
   token: string;
-  user: { id: string; email: string; name: string; role: string; propertyId: string };
+  user: { id: string; email: string | null; username: string | null; name: string; role: string; propertyId: string };
 }
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState('');
+  const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,7 +26,7 @@ export default function LoginPage() {
     try {
       const data = await apiFetch<AuthResponse>('/auth/login', {
         method: 'POST',
-        body: { email, password },
+        body: { login, password },
         skipAuth: true,
       });
       setToken(data.token);
@@ -61,13 +61,13 @@ export default function LoginPage() {
           )}
 
           <label className="block">
-            <span className="block text-xs text-ink-500 mb-1.5 font-medium">E-mail</span>
+            <span className="block text-xs text-ink-500 mb-1.5 font-medium">Usuário ou e-mail</span>
             <input
-              type="email"
-              autoComplete="email"
+              type="text"
+              autoComplete="username"
               required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              value={login}
+              onChange={(e) => setLogin(e.target.value)}
               className="w-full rounded-lg border border-sand-200 px-3 outline-none focus:border-teal-500 min-h-touch-md bg-cream"
             />
           </label>

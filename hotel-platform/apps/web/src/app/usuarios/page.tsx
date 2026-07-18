@@ -38,7 +38,10 @@ function assignableRoles(actorRole: string | undefined): string[] {
 export default function UsuariosPage() {
   const { data: me } = useQuery({
     queryKey: ['me'],
-    queryFn: () => apiFetch<{ user: { role: string; email: string } }>('/auth/me'),
+    queryFn: () =>
+      apiFetch<{ user: { userId: string; role: string; email: string | null; username: string | null } }>(
+        '/auth/me',
+      ),
   });
   const actorRole = me?.user.role;
   const { data: users, isLoading } = useUsersManagement();
@@ -77,7 +80,7 @@ export default function UsuariosPage() {
                 <thead className="bg-sand-50">
                   <tr>
                     <Th>Nome</Th>
-                    <Th>E-mail</Th>
+                    <Th>Login</Th>
                     <Th>Cargo</Th>
                     <Th>Situação</Th>
                     <Th>Último acesso</Th>
@@ -88,7 +91,10 @@ export default function UsuariosPage() {
                   {users.map((u) => (
                     <tr key={u.id} className="border-t border-sand-100 hover:bg-sand-50">
                       <td className="px-5 py-3 font-medium text-ink-950">{u.name}</td>
-                      <td className="px-5 py-3 text-ink-500 text-xs">{u.email}</td>
+                      <td className="px-5 py-3 text-xs">
+                        <div className="text-ink-950">{u.username ?? '—'}</div>
+                        {u.email && <div className="text-ink-400">{u.email}</div>}
+                      </td>
                       <td className="px-5 py-3">{ROLE_LABELS[u.role] ?? u.role}</td>
                       <td className="px-5 py-3">
                         {u.active ? <Tag>Ativo</Tag> : <span className="text-xs text-ink-300">Inativo</span>}
@@ -115,7 +121,7 @@ export default function UsuariosPage() {
         <EditUserSheet
           user={editing}
           actorRole={actorRole}
-          currentEmail={me?.user.email}
+          currentUserId={me?.user.userId}
           onClose={() => setEditing(null)}
         />
       )}
@@ -134,6 +140,7 @@ function CreateUserSheet({
   const roles = assignableRoles(actorRole);
   const [form, setForm] = useState({
     name: '',
+    username: '',
     email: '',
     phone: '',
     role: roles[0] ?? 'RECEPTION',
@@ -146,7 +153,8 @@ function CreateUserSheet({
     try {
       await create.mutateAsync({
         name: form.name,
-        email: form.email,
+        username: form.username.trim(),
+        email: form.email.trim() || undefined,
         phone: form.phone || undefined,
         role: form.role,
         password: form.password,
@@ -164,7 +172,17 @@ function CreateUserSheet({
         <Field label="Nome completo">
           <input className={inputCls} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
         </Field>
-        <Field label="E-mail (login)">
+        <Field label="Usuário (login)">
+          <input
+            className={inputCls}
+            value={form.username}
+            onChange={(e) => setForm({ ...form, username: e.target.value })}
+            placeholder="ex.: joana.recepcao"
+            autoCapitalize="none"
+          />
+          <p className="text-xs text-ink-500 mt-1">Com o que a pessoa vai entrar no sistema (letras, números, ponto, hífen ou _).</p>
+        </Field>
+        <Field label="E-mail (opcional)">
           <input type="email" className={inputCls} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
         </Field>
         <Field label="Telefone (opcional)">
@@ -195,19 +213,26 @@ function CreateUserSheet({
 function EditUserSheet({
   user,
   actorRole,
-  currentEmail,
+  currentUserId,
   onClose,
 }: {
   user: ManagedUser;
   actorRole: string | undefined;
-  currentEmail: string | undefined;
+  currentUserId: string | undefined;
   onClose: () => void;
 }) {
   const update = useUpdateUser();
   const reset = useResetPassword();
   const roles = assignableRoles(actorRole);
-  const isSelf = currentEmail === user.email;
-  const [form, setForm] = useState({ name: user.name, phone: user.phone ?? '', role: user.role, active: user.active });
+  const isSelf = currentUserId === user.id;
+  const [form, setForm] = useState({
+    name: user.name,
+    username: user.username ?? '',
+    email: user.email ?? '',
+    phone: user.phone ?? '',
+    role: user.role,
+    active: user.active,
+  });
   const [newPassword, setNewPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
@@ -218,6 +243,8 @@ function EditUserSheet({
       await update.mutateAsync({
         id: user.id,
         name: form.name,
+        username: form.username.trim(),
+        email: form.email.trim(),
         phone: form.phone,
         role: form.role,
         active: form.active,
@@ -249,6 +276,17 @@ function EditUserSheet({
         {ok && <div className="bg-teal-50 border border-teal-200 text-teal-900 text-sm rounded-lg p-3">{ok}</div>}
         <Field label="Nome completo">
           <input className={inputCls} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+        </Field>
+        <Field label="Usuário (login)">
+          <input
+            className={inputCls}
+            value={form.username}
+            onChange={(e) => setForm({ ...form, username: e.target.value })}
+            autoCapitalize="none"
+          />
+        </Field>
+        <Field label="E-mail (opcional)">
+          <input type="email" className={inputCls} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
         </Field>
         <Field label="Telefone">
           <input className={inputCls} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
@@ -327,7 +365,7 @@ function UserCardMobile({ user: u, onEdit }: { user: ManagedUser; onEdit: () => 
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="font-medium text-sm text-ink-950 truncate">{u.name}</div>
-          <div className="text-xs text-ink-500 truncate">{u.email}</div>
+          <div className="text-xs text-ink-500 truncate">{u.username ?? u.email ?? '—'}</div>
           <div className="flex items-center gap-2 mt-1.5">
             <span className="text-xs">{ROLE_LABELS[u.role] ?? u.role}</span>
             {u.active ? <Tag>Ativo</Tag> : <span className="text-xs text-ink-300">Inativo</span>}

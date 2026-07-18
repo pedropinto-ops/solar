@@ -205,7 +205,8 @@ export function useStaff(role?: string) {
 export interface ManagedUser {
   id: string;
   name: string;
-  email: string;
+  username: string | null;
+  email: string | null;
   phone: string | null;
   role: string;
   active: boolean;
@@ -225,7 +226,8 @@ export function useCreateUser() {
   return useMutation({
     mutationFn: (body: {
       name: string;
-      email: string;
+      username: string;
+      email?: string;
       phone?: string;
       role: string;
       password: string;
@@ -243,6 +245,8 @@ export function useUpdateUser() {
     }: {
       id: string;
       name?: string;
+      username?: string;
+      email?: string;
       phone?: string;
       role?: string;
       active?: boolean;

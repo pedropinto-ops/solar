@@ -1,11 +1,27 @@
 import { z } from 'zod';
-import { emailSchema } from '../utils/validators.js';
 
+/** Login por nome de usuário OU e-mail (campo único "login"). */
 export const loginSchema = z.object({
-  email: emailSchema,
+  login: z.string().trim().min(3, 'Informe usuário ou e-mail').max(160),
   password: z.string().min(6, 'Senha deve ter ao menos 6 caracteres').max(128),
 });
 export type LoginInput = z.infer<typeof loginSchema>;
+
+/** Nome de usuário de login: letras, números, ponto, hífen e underscore. */
+export const usernameSchema = z
+  .string()
+  .trim()
+  .min(3, 'Usuário deve ter ao menos 3 caracteres')
+  .max(60)
+  .regex(/^[a-zA-Z0-9._-]+$/, 'Use apenas letras, números, ponto, hífen ou _');
+
+/** E-mail opcional (aceita vazio). */
+export const optionalEmailSchema = z
+  .string()
+  .email('E-mail inválido')
+  .max(160)
+  .optional()
+  .or(z.literal(''));
 
 export const userRoleEnum = z.enum([
   'ADMIN',
@@ -17,7 +33,8 @@ export const userRoleEnum = z.enum([
 ]);
 
 export const createUserSchema = z.object({
-  email: emailSchema,
+  username: usernameSchema,
+  email: optionalEmailSchema,
   password: z.string().min(8, 'Senha deve ter ao menos 8 caracteres').max(128),
   name: z.string().trim().min(3).max(120),
   phone: z.string().optional(),
@@ -28,6 +45,8 @@ export type CreateUserInput = z.infer<typeof createUserSchema>;
 /** Edição de funcionário (gestão). Todos os campos opcionais (PATCH). */
 export const updateUserSchema = z
   .object({
+    username: usernameSchema.optional(),
+    email: optionalEmailSchema,
     name: z.string().trim().min(3).max(120).optional(),
     phone: z.string().max(30).optional(),
     role: userRoleEnum.optional(),
