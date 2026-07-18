@@ -4,6 +4,18 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from './api-client';
 
 // =========================================
+//  Usuário logado (mesma queryKey do AppShell → sem chamada duplicada)
+// =========================================
+
+export function useMe() {
+  return useQuery({
+    queryKey: ['me'],
+    queryFn: () =>
+      apiFetch<{ user: { name: string; role: string; email: string } }>('/auth/me'),
+  });
+}
+
+// =========================================
 //  Tipos básicos
 // =========================================
 

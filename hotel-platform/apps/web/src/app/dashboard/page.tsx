@@ -6,14 +6,21 @@ import { PageHeader, FAB } from '@/components/ui/page-header';
 import { Card, CardHeader, KpiCard, SectionHeader } from '@/components/ui/primitives';
 import { StatusPill } from '@/components/ui/status-pill';
 import { Avatar } from '@/components/ui/avatar';
-import { useDashboard, useReservations, type Reservation } from '@/lib/hooks';
+import { useDashboard, useReservations, useMe, type Reservation } from '@/lib/hooks';
 import { fmtDate } from '@/lib/format';
 
 export default function DashboardPage() {
   const { data: dash, isLoading: dashLoading } = useDashboard();
   const { data: reservations } = useReservations({ status: 'CONFIRMED,CHECKED_IN' });
+  const { data: me } = useMe();
 
-  const today = new Date().toLocaleDateString('pt-BR', {
+  const now = new Date();
+  const hour = now.getHours();
+  const salute = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite';
+  const firstName = me?.user.name?.trim().split(/\s+/)[0] ?? '';
+  const greeting = firstName ? `${salute}, ${firstName}` : salute;
+
+  const today = now.toLocaleDateString('pt-BR', {
     weekday: 'long',
     day: '2-digit',
     month: 'long',
@@ -22,7 +29,7 @@ export default function DashboardPage() {
   return (
     <AppShell>
       <PageHeader
-        title="Bom dia, Carlos"
+        title={greeting}
         subtitle={today}
         actions={
           <Link

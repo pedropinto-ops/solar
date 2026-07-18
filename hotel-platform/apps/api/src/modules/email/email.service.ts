@@ -1,22 +1,24 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import * as nodemailer from 'nodemailer';
-import type { Transporter } from 'nodemailer';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
 
 /**
- * Envio de e-mails transacionais via SMTP (Google Workspace / Gmail).
+ * Envio de e-mails transacionais via API HTTP do Resend (https://resend.com).
  *
- * DESLIGADO por padrão: sem SMTP_USER/SMTP_PASS, os métodos apenas registram
- * log e retornam — não quebram nada.
+ * POR QUE HTTP E NÃO SMTP: o Railway BLOQUEIA as portas de SMTP de saída
+ * (25/465/587) — conexões a smtp.gmail.com dão "timeout" (comprovado via
+ * console do container). Qualquer envio por SMTP é impossível nesta plataforma.
+ * O Resend envia por HTTPS (porta 443), que não é bloqueada.
+ *
+ * DESLIGADO por padrão: sem RESEND_API_KEY, os métodos apenas registram log e
+ * retornam — não quebram nada.
  *
  * Variáveis de ambiente (Railway):
- *   SMTP_HOST  — padrão "smtp.gmail.com"
- *   SMTP_PORT  — padrão 587 (STARTTLS); use 465 para SSL
- *   SMTP_USER  — a caixa que autentica (ex.: solarirara@gpcbahia.com.br)
- *   SMTP_PASS  — SENHA DE APP do Google (exige verificação em 2 etapas ativa)
- *   EMAIL_FROM — ex.: "Solar Irará Hotel <solarirara@gpcbahia.com.br>".
- *                O endereço PRECISA ser o SMTP_USER (ou um alias "Enviar como").
+ *   RESEND_API_KEY — chave da API do Resend (re_...). Sem ela, envio desligado.
+ *   EMAIL_FROM     — remetente, ex.: "Solar Irará <reservas@send.gpcbahia.com.br>".
+ *                    O domínio PRECISA estar verificado no Resend (registros DNS
+ *                    SPF/DKIM). Para enviar a destinatários arbitrários (hóspedes),
+ *                    a verificação de domínio é obrigatória — não há como evitar.
  *
  * REGRA DE OURO: nenhum método aqui pode lançar exceção para o chamador.
  * O envio é sempre "dispara e esquece" após a reserva já estar gravada, então
@@ -26,58 +28,64 @@ import { PrismaService } from '../../common/prisma/prisma.service.js';
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
   private readonly from: string;
-  private readonly transporter: Transporter | null;
+  private readonly apiKey: string | null;
 
   constructor(
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
   ) {
-    const host = this.config.get<string>('SMTP_HOST', 'smtp.gmail.com');
-    const port = Number(this.config.get<string>('SMTP_PORT', '587'));
-    const user = this.config.get<string>('SMTP_USER', '');
-    const pass = this.config.get<string>('SMTP_PASS', '');
+    const apiKey = this.config.get<string>('RESEND_API_KEY', '');
     this.from = this.config.get<string>(
       'EMAIL_FROM',
-      user ? `Solar Irará Hotel <${user}>` : 'Solar Irará Hotel',
+      'Solar Irará Hotel <onboarding@resend.dev>',
     );
-    if (user && pass) {
-      this.transporter = nodemailer.createTransport({
-        host,
-        port,
-        secure: port === 465, // 465 = SSL direto; 587 = STARTTLS
-        auth: { user, pass },
-      });
+    if (apiKey) {
+      this.apiKey = apiKey;
     } else {
-      this.transporter = null;
+      this.apiKey = null;
       this.logger.warn(
-        '⚠️  SMTP não configurado (SMTP_USER/SMTP_PASS) — e-mails NÃO serão enviados (apenas log).',
+        '⚠️  RESEND_API_KEY não configurado — e-mails NÃO serão enviados (apenas log).',
       );
     }
   }
 
   get enabled(): boolean {
-    return this.transporter !== null;
+    return this.apiKey !== null;
   }
 
   /**
-   * Envio bruto. Retorna true/false; nunca lança.
+   * Envio bruto via API do Resend (HTTPS). Retorna true/false; nunca lança.
    */
   private async send(params: {
     to: string;
     subject: string;
     html: string;
   }): Promise<boolean> {
-    if (!this.transporter) {
+    if (!this.apiKey) {
       this.logger.log(`[e-mail desligado] Para: ${params.to} — ${params.subject}`);
       return false;
     }
     try {
-      await this.transporter.sendMail({
-        from: this.from,
-        to: params.to,
-        subject: params.subject,
-        html: params.html,
+      const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: this.from,
+          to: params.to,
+          subject: params.subject,
+          html: params.html,
+        }),
       });
+      if (!res.ok) {
+        const detail = await res.text().catch(() => '');
+        this.logger.error(
+          `Erro ao enviar e-mail para ${params.to}: HTTP ${res.status} ${detail}`,
+        );
+        return false;
+      }
       this.logger.log(`E-mail enviado para ${params.to} — ${params.subject}`);
       return true;
     } catch (err) {

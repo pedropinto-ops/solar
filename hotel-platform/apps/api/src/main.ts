@@ -6,9 +6,9 @@ import helmet from 'helmet';
 import compression from 'compression';
 import { AppModule } from './app.module.js';
 
-// Containers sem saída IPv6 (ex.: Railway): o Node tentava conectar no SMTP
-// (smtp.gmail.com) via IPv6 e falhava com ENETUNREACH. Priorizar IPv4 resolve.
-// Não afeta o Prisma/Neon, que usa resolvedor próprio (engine Rust).
+// Containers sem saída IPv6 (ex.: Railway): priorizar IPv4 em resoluções DNS
+// evita ENETUNREACH em chamadas HTTPS de saída (ex.: API do Resend) quando o
+// host resolve para IPv6. Não afeta o Prisma/Neon, que usa resolvedor próprio.
 setDefaultResultOrder('ipv4first');
 
 async function bootstrap() {

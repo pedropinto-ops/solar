@@ -9,8 +9,15 @@ export const fmtCurrency = (value: number | string | null | undefined): string =
 
 export const fmtDate = (value: string | Date | null | undefined): string => {
   if (!value) return '—';
-  const d = typeof value === 'string' ? new Date(value) : value;
-  return d.toLocaleDateString('pt-BR');
+  // Datas da API são campos @db.Date (data pura) serializados como
+  // "AAAA-MM-DDT00:00:00.000Z". Formatar em UTC mostra o dia do calendário
+  // exatamente como gravado — sem "voltar" um dia no fuso do Brasil (UTC-3).
+  if (typeof value === 'string') {
+    return new Date(value).toLocaleDateString('pt-BR', { timeZone: 'UTC' });
+  }
+  // Date construído no cliente (ex.: seletor da agenda) representa o dia em
+  // horário local — mantém a formatação local.
+  return value.toLocaleDateString('pt-BR');
 };
 
 export const fmtDateTime = (value: string | Date | null | undefined): string => {
