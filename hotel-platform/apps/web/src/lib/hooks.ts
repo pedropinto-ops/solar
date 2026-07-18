@@ -351,6 +351,145 @@ export function useCreateGuest() {
 }
 
 // =========================================
+//  CONVÊNIOS (empresas) + FATURAS
+// =========================================
+
+export interface Company {
+  id: string;
+  legalName: string;
+  tradeName: string | null;
+  cnpj: string;
+  email: string | null;
+  phone: string | null;
+  contactName: string | null;
+  defaultRateOverride: string | null;
+  paymentTermDays: number;
+  billingDay: number | null;
+  creditLimit: string | null;
+  active: boolean;
+  notes: string | null;
+  openReservations?: number;
+  openAmount?: string;
+}
+
+export function useCompanies(onlyActive = false) {
+  return useQuery({
+    queryKey: ['companies', { onlyActive }],
+    queryFn: () => apiFetch<Company[]>(`/companies${onlyActive ? '?onlyActive=true' : ''}`),
+  });
+}
+
+export function useCreateCompany() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: Record<string, unknown>) =>
+      apiFetch<Company>('/companies', { method: 'POST', body: data }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['companies'] }),
+  });
+}
+
+export function useUpdateCompany() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }: { id: string } & Record<string, unknown>) =>
+      apiFetch<Company>(`/companies/${id}`, { method: 'PATCH', body: data }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['companies'] }),
+  });
+}
+
+export function useDeleteCompany() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiFetch(`/companies/${id}`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['companies'] }),
+  });
+}
+
+export interface OpenReservation {
+  id: string;
+  code: string;
+  status: string;
+  checkInDate: string;
+  checkOutDate: string;
+  nights: number;
+  totalAmount: string;
+  corporatePO: string | null;
+  primaryGuest: { fullName: string } | null;
+  room: { number: string } | null;
+}
+
+export function useCompanyOpenReservations(companyId: string | null) {
+  return useQuery({
+    queryKey: ['company-open', companyId],
+    queryFn: () => apiFetch<OpenReservation[]>(`/companies/${companyId}/open-reservations`),
+    enabled: !!companyId,
+  });
+}
+
+export interface Invoice {
+  id: string;
+  number: string;
+  status: string;
+  periodStart: string;
+  periodEnd: string;
+  subtotal: string;
+  consumptions: string;
+  discount: string;
+  totalAmount: string;
+  paidAmount: string;
+  issuedAt: string | null;
+  dueDate: string | null;
+  paidAt: string | null;
+  notes: string | null;
+  company?: { legalName: string; tradeName: string | null };
+  _count?: { reservations: number };
+}
+
+export function useInvoices(companyId?: string) {
+  return useQuery({
+    queryKey: ['invoices', { companyId }],
+    queryFn: () => apiFetch<Invoice[]>(`/invoices${companyId ? `?companyId=${companyId}` : ''}`),
+  });
+}
+
+export function useCreateInvoice() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: Record<string, unknown>) =>
+      apiFetch<Invoice>('/invoices', { method: 'POST', body: data }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['invoices'] });
+      qc.invalidateQueries({ queryKey: ['companies'] });
+      qc.invalidateQueries({ queryKey: ['company-open'] });
+    },
+  });
+}
+
+export function usePayInvoice() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: string } & Record<string, unknown>) =>
+      apiFetch(`/invoices/${id}/pay`, { method: 'POST', body }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['invoices'] });
+      qc.invalidateQueries({ queryKey: ['reservations'] });
+    },
+  });
+}
+
+export function useCancelInvoice() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiFetch(`/invoices/${id}/cancel`, { method: 'POST' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['invoices'] });
+      qc.invalidateQueries({ queryKey: ['companies'] });
+      qc.invalidateQueries({ queryKey: ['company-open'] });
+    },
+  });
+}
+
+// =========================================
 //  HOUSEKEEPING
 // =========================================
 

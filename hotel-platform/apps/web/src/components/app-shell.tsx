@@ -29,6 +29,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/almoxarifado', label: 'Almoxarifado', icon: 'box' },
   { href: '/relatorios', label: 'Relatórios', icon: 'chart' },
   { href: '/precos', label: 'Preços', icon: 'tag' },
+  { href: '/convenios', label: 'Convênios', icon: 'building' },
   { href: '/usuarios', label: 'Usuários', icon: 'users' },
 ];
 
@@ -110,6 +111,15 @@ function Icon({ name, className }: { name: string; className?: string }) {
         <svg className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
           <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
           <line x1="7" y1="7" x2="7.01" y2="7" />
+        </svg>
+      );
+    case 'building':
+      return (
+        <svg className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="4" y="3" width="16" height="18" rx="1" />
+          <line x1="9" y1="7" x2="9" y2="7.01" /><line x1="15" y1="7" x2="15" y2="7.01" />
+          <line x1="9" y1="11" x2="9" y2="11.01" /><line x1="15" y1="11" x2="15" y2="11.01" />
+          <path d="M10 21v-4h4v4" />
         </svg>
       );
     case 'logout':

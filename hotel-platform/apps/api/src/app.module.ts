@@ -20,6 +20,7 @@ import { StockModule } from './modules/stock/stock.module.js';
 import { ReportModule } from './modules/report/report.module.js';
 import { EmailModule } from './modules/email/email.module.js';
 import { PricingModule } from './modules/pricing/pricing.module.js';
+import { CompanyModule } from './modules/company/company.module.js';
 
 @Module({
   imports: [
@@ -62,6 +63,7 @@ import { PricingModule } from './modules/pricing/pricing.module.js';
     StockModule,
     ReportModule,
     PricingModule,
+    CompanyModule,
   ],
   controllers: [HealthController],
   providers: [

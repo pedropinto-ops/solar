@@ -9,6 +9,7 @@ import {
   useRoomTypes,
   useCreateGuest,
   useCreateReservation,
+  useCompanies,
   type Guest,
 } from '@/lib/hooks';
 import { apiFetch, ApiError } from '@/lib/api-client';
@@ -33,6 +34,7 @@ export default function NewReservationPage() {
     children: 0,
     billingMode: 'DEPOSIT_BALANCE',
     depositPercent: 30,
+    companyId: '',
     dailyRate: 0,
     source: 'RECEPTION' as const,
     guestNotes: '',
@@ -72,6 +74,7 @@ export default function NewReservationPage() {
         children: form.children,
         billingMode: form.billingMode,
         depositPercent: form.depositPercent,
+        companyId: form.billingMode === 'POSTPAID_CORPORATE' ? form.companyId : undefined,
         dailyRate: form.dailyRate,
         source: form.source,
         guestNotes: form.guestNotes || undefined,
@@ -341,7 +344,11 @@ function ReservationStep({
   onBack: () => void;
   onNext: () => void;
 }) {
-  const valid = form.roomTypeId && nights > 0 && form.adults >= 1 && form.dailyRate > 0;
+  const { data: companies } = useCompanies(true);
+  const needsCompany = form.billingMode === 'POSTPAID_CORPORATE';
+  const valid =
+    form.roomTypeId && nights > 0 && form.adults >= 1 && form.dailyRate > 0 &&
+    (!needsCompany || !!form.companyId);
 
   return (
     <Card padding="lg" className="space-y-4">
@@ -432,6 +439,32 @@ function ReservationStep({
             <option value="POSTPAID_CORPORATE">Pós-pago corporativo</option>
           </select>
         </Field>
+        {needsCompany && (
+          <Field label="Convênio (empresa) *" className="sm:col-span-2">
+            <select
+              value={form.companyId}
+              onChange={(e) => {
+                const c = companies?.find((x) => x.id === e.target.value);
+                const rate = c?.defaultRateOverride ? Number(c.defaultRateOverride) : null;
+                onChange({ ...form, companyId: e.target.value, ...(rate ? { dailyRate: rate } : {}) });
+              }}
+              className="w-full rounded-lg border border-sand-200 px-3 min-h-touch-sm bg-cream text-sm"
+            >
+              <option value="">Selecione a empresa…</option>
+              {(companies ?? []).map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.tradeName || c.legalName}
+                  {c.defaultRateOverride ? ` — R$ ${Number(c.defaultRateOverride)}/diária` : ''}
+                </option>
+              ))}
+            </select>
+            {(!companies || companies.length === 0) && (
+              <p className="text-xs text-amber-700 mt-1">
+                Nenhum convênio cadastrado. Cadastre em “Convênios” no menu.
+              </p>
+            )}
+          </Field>
+        )}
       </div>
 
       <Field label="Notas do hóspede (opcional)">

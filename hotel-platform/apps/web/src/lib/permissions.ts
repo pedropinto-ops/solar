@@ -25,6 +25,7 @@ export const ROUTE_ACCESS: { prefix: string; roles: Role[] }[] = [
   { prefix: '/almoxarifado', roles: ['ADMIN', 'MANAGER', 'HOUSEKEEPING_SUPERVISOR'] },
   { prefix: '/relatorios', roles: ['ADMIN', 'MANAGER'] },
   { prefix: '/precos', roles: ['ADMIN', 'MANAGER'] },
+  { prefix: '/convenios', roles: ['ADMIN', 'MANAGER'] },
   { prefix: '/usuarios', roles: ['ADMIN', 'MANAGER'] },
 ];
 
