@@ -9,6 +9,7 @@ import {
 import { PrismaService } from '../../common/prisma/prisma.service.js';
 import { AuditService } from '../../common/audit/audit.service.js';
 import { generateReservationCode } from '../../common/utils/reservation-code.js';
+import { hotelTodayRange } from '../../common/utils/date.js';
 import { ROOM_OCCUPYING_STATUSES } from '../room/room.service.js';
 import type { Prisma } from '@prisma/client';
 import { Prisma as P } from '@prisma/client';
@@ -139,10 +140,9 @@ export class ReservationService {
   }
 
   async dashboardCounts(propertyId: string) {
-    const today = new Date();
-    today.setUTCHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+    // "Hoje" no fuso do hotel (não no UTC do servidor) — senão à noite no Brasil
+    // as chegadas/saídas de amanhã apareciam como "hoje".
+    const { today, tomorrow } = hotelTodayRange();
 
     const [arrivals, departures, inHouse, pending] = await Promise.all([
       this.prisma.reservation.count({
@@ -536,9 +536,8 @@ export class ReservationService {
         });
       }
 
-      // Validação de data (early check-in)
-      const today = new Date();
-      today.setUTCHours(0, 0, 0, 0);
+      // Validação de data (early check-in) — "hoje" no fuso do hotel
+      const { today } = hotelTodayRange();
       const checkInDay = new Date(reservation.checkInDate);
       checkInDay.setUTCHours(0, 0, 0, 0);
 

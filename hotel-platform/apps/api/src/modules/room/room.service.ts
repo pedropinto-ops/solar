@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
+import { hotelTodayRange } from '../../common/utils/date.js';
 import { PricingService } from '../pricing/pricing.service.js';
 
 export interface AvailabilityParams {
@@ -239,10 +240,7 @@ export class RoomService {
    * status do quarto ainda define os estados de governança (limpeza etc.).
    */
   async board(propertyId: string) {
-    const today = new Date();
-    today.setUTCHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+    const { today, tomorrow } = hotelTodayRange();
 
     const [rooms, inHouse, arrivals] = await Promise.all([
       this.prisma.room.findMany({

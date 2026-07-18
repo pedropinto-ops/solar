@@ -6,6 +6,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
+import { hotelToday } from '../../common/utils/date.js';
 import { AuditService } from '../../common/audit/audit.service.js';
 import { PaymentService } from '../payment/payment.service.js';
 import { EmailService } from '../email/email.service.js';
@@ -92,9 +93,8 @@ export class PublicReservationService {
       return cached.result;
     }
 
-    // Validação básica de datas
-    const today = new Date();
-    today.setUTCHours(0, 0, 0, 0);
+    // Validação básica de datas — "hoje" no fuso do hotel
+    const today = hotelToday();
     if (data.checkInDate < today) {
       throw new BadRequestException({
         errorCode: 'VALIDATION_ERROR',

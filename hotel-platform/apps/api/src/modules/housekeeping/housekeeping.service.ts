@@ -4,6 +4,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
+import { hotelTodayRange } from '../../common/utils/date.js';
 import { AuditService } from '../../common/audit/audit.service.js';
 import type { Prisma } from '@prisma/client';
 
@@ -103,10 +104,7 @@ export class HousekeepingService {
    * Estatísticas para o dashboard da governanta.
    */
   async dashboard(propertyId: string) {
-    const today = new Date();
-    today.setUTCHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+    const { today, tomorrow } = hotelTodayRange();
 
     // Limite de atraso: limpeza PENDING criada há mais de 24h.
     const overdueCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);

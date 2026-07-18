@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
+import { hotelToday } from '../../common/utils/date.js';
 
 /** Status que ocupam quarto (contam para ocupação/receita de diárias). */
 const OCCUPYING = ['CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT'] as const;
@@ -204,8 +205,7 @@ export class ReportService {
    * de hoje). Olha reservas ativas que tocam a janela e conta room-nights.
    */
   async forecast({ propertyId }: { propertyId: string }) {
-    const now = new Date();
-    now.setUTCHours(0, 0, 0, 0);
+    const now = hotelToday();
     const horizonsDays = [7, 30];
     const maxDays = Math.max(...horizonsDays);
     const nowIdx = dayIndex(now);
