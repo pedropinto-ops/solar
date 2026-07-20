@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiFetch, setToken, ApiError } from '@/lib/api-client';
 import { homeFor } from '@/lib/permissions';
@@ -18,6 +18,15 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [expired, setExpired] = useState(false);
+
+  // Lido de window (e não de useSearchParams) para não exigir Suspense na
+  // pré-renderização estática desta página.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).has('expirada')) {
+      setExpired(true);
+    }
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -53,6 +62,12 @@ export default function LoginPage() {
           className="bg-cream rounded-2xl border border-sand-200 p-6 space-y-4"
         >
           <h1 className="font-serif-display text-xl text-ink-950">Entrar</h1>
+
+          {expired && !error && (
+            <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-lg p-3">
+              Sua sessão expirou. Entre novamente para continuar.
+            </div>
+          )}
 
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg p-3">

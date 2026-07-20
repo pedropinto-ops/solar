@@ -11,6 +11,13 @@ export interface JwtPayload {
   username: string | null;
   role: string;
   propertyId: string;
+  /**
+   * Versão da sessão no momento da emissão. Comparada com a do banco a cada
+   * requisição — se não bater, o token foi revogado (troca de senha) e o
+   * acesso cai na hora. Tokens antigos, emitidos antes desta mudança, não
+   * têm o campo: tratamos como versão 0 para não deslogar todo mundo agora.
+   */
+  tv?: number;
 }
 
 @Injectable()
@@ -87,9 +94,12 @@ export class AuthService {
       username: user.username,
       role: user.role,
       propertyId: user.propertyId,
+      tv: user.tokenVersion,
     };
 
-    const expiresIn = this.config.get<string>('JWT_EXPIRES_IN', '7d');
+    // 24h (era 7d): reduz drasticamente a janela de uso de um token roubado.
+    // Ajustável por JWT_EXPIRES_IN sem deploy.
+    const expiresIn = this.config.get<string>('JWT_EXPIRES_IN', '24h');
     const token = await this.jwt.signAsync(payload, { expiresIn });
 
     return {
@@ -106,11 +116,17 @@ export class AuthService {
     };
   }
 
-  async validateUser(userId: string) {
+  async validateUser(userId: string, tokenVersion?: number) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
     });
     if (!user || !user.active) return null;
+
+    // Coração da revogação: o token só vale se a versão que ele carrega ainda
+    // for a versão atual do usuário. Trocar a senha incrementa a do banco e
+    // todas as sessões anteriores morrem imediatamente.
+    if ((tokenVersion ?? 0) !== user.tokenVersion) return null;
+
     return user;
   }
 

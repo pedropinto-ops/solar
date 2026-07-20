@@ -248,7 +248,13 @@ export class UserService {
 
     await this.prisma.user.update({
       where: { id: userId },
-      data: { passwordHash: AuthService.hashPassword(password) },
+      data: {
+        passwordHash: AuthService.hashPassword(password),
+        // Derruba TODAS as sessões abertas deste usuário. Sem isto, redefinir
+        // a senha de uma conta comprometida não expulsava o invasor — o token
+        // roubado seguia funcionando até vencer sozinho.
+        tokenVersion: { increment: 1 },
+      },
     });
 
     await this.audit.log({

@@ -67,6 +67,23 @@ export async function apiFetch<T = unknown>(
   const data = text ? JSON.parse(text) : null;
 
   if (!response.ok) {
+    // Sessão expirada ou revogada (senha trocada / usuário desativado).
+    // Antes disto o portal só mostrava um erro genérico na tela onde o
+    // usuário estivesse e ele ficava travado, sem entender o que houve.
+    // Agora limpamos o crachá e mandamos para o login com aviso claro.
+    const isLoginAttempt = path.includes('/auth/login');
+    if (response.status === 401 && !skipAuth && !isLoginAttempt && getToken()) {
+      clearToken();
+      if (
+        typeof window !== 'undefined' &&
+        !window.location.pathname.startsWith('/login')
+      ) {
+        window.location.href = '/login?expirada=1';
+        // Interrompe o fluxo: a navegação já está a caminho.
+        throw new ApiError('Sessão expirada', 401, 'SESSION_EXPIRED');
+      }
+    }
+
     throw new ApiError(
       data?.title || data?.message || response.statusText,
       response.status,
