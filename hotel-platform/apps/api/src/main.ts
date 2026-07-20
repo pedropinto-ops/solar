@@ -1,10 +1,13 @@
+// PRIMEIRO import: inicializa o Sentry antes de qualquer outra coisa carregar.
+import './instrument.js';
 import { setDefaultResultOrder } from 'node:dns';
-import { NestFactory } from '@nestjs/core';
+import { NestFactory, HttpAdapterHost } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import compression from 'compression';
 import { AppModule } from './app.module.js';
+import { SentryExceptionFilter } from './common/sentry/sentry-exception.filter.js';
 
 // Containers sem saída IPv6 (ex.: Railway): priorizar IPv4 em resoluções DNS
 // evita ENETUNREACH em chamadas HTTPS de saída (ex.: API do Resend) quando o
@@ -59,6 +62,11 @@ async function bootstrap() {
       transform: true,
     }),
   );
+
+  // Filtro global que captura erros inesperados no Sentry (mantendo a resposta
+  // HTTP padrão do Nest). Sem SENTRY_DSN, o capture é no-op.
+  const httpAdapterHost = app.get(HttpAdapterHost);
+  app.useGlobalFilters(new SentryExceptionFilter(httpAdapterHost.httpAdapter));
 
   const port = parseInt(process.env.PORT || process.env.API_PORT || '3001', 10);
   const host = process.env.API_HOST || '0.0.0.0';

@@ -18,6 +18,27 @@ export class HealthController {
   private cached: { at: number; body: unknown } | null = null;
   private readonly CACHE_MS = 10_000;
 
+  /**
+   * LIVENESS — "o processo está de pé?". NÃO toca no banco.
+   *
+   * É esta rota que o Railway (e o monitor de uptime) devem checar. Antes, o
+   * healthcheck batia em /health, que consulta o Postgres a cada ping — como o
+   * Railway pinga o tempo todo, o banco NUNCA ficava ocioso e o Neon nunca
+   * suspendia, consumindo a cota de computação do plano grátis 24h por dia até
+   * estourar. Foi exatamente o que derrubou o sistema. Com a liveness sem
+   * banco, o Neon pode dormir quando ninguém está usando de fato.
+   *
+   * ⚙️  Ação no Railway: Settings → Healthcheck Path = /health/live
+   */
+  @Get('live')
+  live() {
+    return { status: 'ok' };
+  }
+
+  /**
+   * READINESS — "dá para atender requisições?" (banco + Redis).
+   * Use em dashboards/diagnóstico, não como healthcheck de plataforma.
+   */
   @Get()
   async check() {
     if (this.cached && Date.now() - this.cached.at < this.CACHE_MS) {

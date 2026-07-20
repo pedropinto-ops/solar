@@ -15,7 +15,12 @@ import { PrismaService } from '../../common/prisma/prisma.service.js';
 export class HoldExpirationService implements OnModuleInit {
   private readonly logger = new Logger(HoldExpirationService.name);
   private interval: NodeJS.Timeout | null = null;
-  private readonly INTERVAL_MS = 60_000; // 1 min
+  // 10 min (era 1 min). Holds públicos duram 48h — não há pressa. Rodar de
+  // hora em hora manteria o Neon sempre aceso; a cada 10 min ele consegue
+  // suspender nos intervalos sem uso, poupando a cota de computação.
+  // Ajustável por HOLD_SWEEP_MINUTES sem deploy.
+  private readonly INTERVAL_MS =
+    Number(process.env.HOLD_SWEEP_MINUTES ?? 10) * 60_000;
 
   constructor(private readonly prisma: PrismaService) {}
 
