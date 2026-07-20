@@ -14,6 +14,9 @@ import { JwtStrategy } from './jwt.strategy.js';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         secret: config.getOrThrow<string>('JWT_SECRET'),
+        // Assina explicitamente em HS256, casando com a trava de verificação
+        // da JwtStrategy.
+        signOptions: { algorithm: 'HS256' as const },
       }),
     }),
   ],

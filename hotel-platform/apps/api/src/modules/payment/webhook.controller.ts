@@ -9,8 +9,22 @@ import {
 } from '@nestjs/common';
 import { SkipThrottle } from '@nestjs/throttler';
 import { ConfigService } from '@nestjs/config';
+import { timingSafeEqual } from 'node:crypto';
 import { PaymentService } from './payment.service.js';
 import { Public } from '../auth/auth.guards.js';
+
+/**
+ * Comparação de token em tempo constante. O `!==` vazava, pelo tempo de
+ * resposta, quantos caracteres iniciais do token estavam corretos — o que
+ * permitiria descobrir o segredo caractere a caractere.
+ */
+function safeCompare(received: string | undefined, expected: string): boolean {
+  if (!received) return false;
+  const a = Buffer.from(received);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
 
 interface AsaasWebhookPayload {
   event?: string;
@@ -52,13 +66,17 @@ export class WebhookController {
       this.logger.warn('ASAAS_WEBHOOK_TOKEN não configurado — recusando webhook');
       throw new UnauthorizedException('Webhook não configurado no servidor');
     }
-    if (token !== expected) {
+    if (!safeCompare(token, expected)) {
       this.logger.warn('Webhook recebido com token inválido');
       throw new UnauthorizedException();
     }
 
     if (!body?.event || !body?.payment?.id) {
-      this.logger.warn('Webhook com payload inválido', body);
+      // NÃO logar o corpo: payloads do Asaas carregam nome/CPF/e-mail do
+      // pagador, que acabariam em texto puro no agregador de logs.
+      this.logger.warn(
+        `Webhook com payload inválido (event=${body?.event ?? 'ausente'})`,
+      );
       return { ignored: true, reason: 'invalid_payload' };
     }
 

@@ -33,6 +33,14 @@ export class AuthService {
     return `${salt}:${hash}`;
   }
 
+  /**
+   * Hash descartável usado só para gastar o mesmo tempo de CPU quando o
+   * usuário não existe — impede enumeração de contas por diferença de tempo.
+   */
+  private static readonly DUMMY_HASH = AuthService.hashPassword(
+    randomBytes(32).toString('hex'),
+  );
+
   static verifyPassword(password: string, stored: string): boolean {
     const [salt, hash] = stored.split(':');
     if (!salt || !hash) return false;
@@ -49,14 +57,16 @@ export class AuthService {
       where: { OR: [{ username: login }, { email: login }] },
     });
 
-    if (!user || !user.active) {
-      throw new UnauthorizedException({
-        errorCode: 'INVALID_CREDENTIALS',
-        title: 'Credenciais inválidas',
-      });
-    }
+    // Executa scrypt SEMPRE — inclusive quando o usuário não existe ou está
+    // inativo — para que os dois caminhos levem o mesmo tempo. Antes, a saída
+    // antecipada tornava "login inexistente" mensuravelmente mais rápida que
+    // "senha errada", permitindo descobrir quais usuários existem.
+    const passwordOk = AuthService.verifyPassword(
+      dto.password,
+      user?.active ? user.passwordHash : AuthService.DUMMY_HASH,
+    );
 
-    if (!AuthService.verifyPassword(dto.password, user.passwordHash)) {
+    if (!user || !user.active || !passwordOk) {
       throw new UnauthorizedException({
         errorCode: 'INVALID_CREDENTIALS',
         title: 'Credenciais inválidas',

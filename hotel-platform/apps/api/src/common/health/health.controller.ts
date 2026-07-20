@@ -9,8 +9,21 @@ import { Public } from '../../modules/auth/auth.guards.js';
 export class HealthController {
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * Cache do resultado. Sem isto, cada GET /health (rota pública e sem
+   * throttle) disparava um SELECT no Postgres e ABRIA UMA CONEXÃO NOVA no
+   * Redis — ou seja, um atacante usava o health check como amplificador para
+   * esgotar as conexões do banco. 10s é curto o bastante para o Railway.
+   */
+  private cached: { at: number; body: unknown } | null = null;
+  private readonly CACHE_MS = 10_000;
+
   @Get()
   async check() {
+    if (this.cached && Date.now() - this.cached.at < this.CACHE_MS) {
+      return this.cached.body;
+    }
+
     const checks: Record<string, string> = {};
     let allOk = true;
 
@@ -42,13 +55,15 @@ export class HealthController {
       }
     }
 
-    return {
+    // Payload mínimo: `env`, `version` e `uptime` são reconhecimento gratuito
+    // para um atacante (qual ambiente, qual versão para casar com CVE, há
+    // quanto tempo subiu). O healthcheck só precisa do status.
+    const body = {
       status: allOk ? 'ok' : 'degraded',
       timestamp: new Date().toISOString(),
       checks,
-      version: process.env.npm_package_version || '0.1.0',
-      uptime: Math.floor(process.uptime()),
-      env: process.env.NODE_ENV || 'development',
     };
+    this.cached = { at: Date.now(), body };
+    return body;
   }
 }

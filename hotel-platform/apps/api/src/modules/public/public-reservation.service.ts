@@ -42,6 +42,19 @@ export class PublicReservationService {
   // será cancelada pelo cron.
   private readonly HOLD_MINUTES = 30;
 
+  /**
+   * Prazo que uma SOLICITAÇÃO pública segura o quarto até a recepção confirmar.
+   *
+   * Segurança: sem prazo, a reserva pública nascia com `holdExpiresAt = null` e,
+   * como PENDING já ocupa quarto físico, qualquer pessoa sem login podia criar
+   * solicitações e travar o hotel inteiro para sempre (a rotina de limpeza só
+   * cancela prazos VENCIDOS, e nulo nunca vence).
+   *
+   * 48h é folga suficiente para a recepção confirmar e limita a janela de abuso.
+   * Ajustável por PUBLIC_HOLD_HOURS sem precisar de deploy.
+   */
+  private readonly PUBLIC_HOLD_HOURS = Number(process.env.PUBLIC_HOLD_HOURS ?? 48);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
@@ -339,7 +352,12 @@ export class PublicReservationService {
               source: 'DIRECT',
               sourceDetails: groupTag,
               status: 'PENDING',
-              holdExpiresAt: null,
+              // Solicitação pública segura o quarto por tempo LIMITADO.
+              // Reservas criadas pela equipe continuam sem prazo (só o fluxo
+              // público, sem login, é que precisa desta trava anti-abuso).
+              holdExpiresAt: new Date(
+                Date.now() + this.PUBLIC_HOLD_HOURS * 60 * 60 * 1000,
+              ),
               guestNotes: data.guestNotes,
               contractAccepted: true,
               contractAcceptedAt: new Date(),

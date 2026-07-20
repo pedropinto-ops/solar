@@ -6,7 +6,9 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
 import { AuditService } from '../../common/audit/audit.service.js';
-import type { Prisma } from '@prisma/client';
+// Import de VALOR (não `import type`): Prisma.DbNull é usado em runtime para
+// limpar colunas Json na anonimização.
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class GuestService {
@@ -15,8 +17,23 @@ export class GuestService {
     private readonly audit: AuditService,
   ) {}
 
+  /**
+   * Mascara documento para exibição em LISTA (minimização de dados — LGPD).
+   * Mantém só os 2 últimos dígitos, o suficiente para o staff conferir sem
+   * expor o CPF inteiro. O número completo só sai no getById (registro único).
+   */
+  private maskDocument(doc: string | null): string | null {
+    if (!doc) return null;
+    const clean = doc.trim();
+    if (clean.length <= 2) return '••';
+    return `${'•'.repeat(Math.max(clean.length - 2, 3))}${clean.slice(-2)}`;
+  }
+
   async list(params: { propertyId: string; q?: string; limit?: number }) {
-    const { propertyId, q, limit = 50 } = params;
+    const { propertyId, q } = params;
+    // Teto rígido: sem isto, ?limit=9999999 exporta a base inteira de hóspedes
+    // (CPF + contatos) numa requisição só. 100 é o máximo por página.
+    const limit = Math.min(Math.max(params.limit ?? 50, 1), 100);
 
     const where: Prisma.GuestWhereInput = {
       propertyId,
@@ -33,7 +50,7 @@ export class GuestService {
       ];
     }
 
-    return this.prisma.guest.findMany({
+    const guests = await this.prisma.guest.findMany({
       where,
       orderBy: { fullName: 'asc' },
       take: limit,
@@ -51,6 +68,14 @@ export class GuestService {
         company: { select: { tradeName: true } },
       },
     });
+
+    // Minimização (LGPD): a lista devolve o documento MASCARADO. O CPF completo
+    // exige abrir o hóspede (GET /guests/:id), o que reduz a superfície de
+    // exposição e o impacto de um token vazado.
+    return guests.map((g) => ({
+      ...g,
+      documentNumber: this.maskDocument(g.documentNumber),
+    }));
   }
 
   async getById(propertyId: string, id: string) {
@@ -115,7 +140,12 @@ export class GuestService {
       action: 'guest.created',
       entityType: 'Guest',
       entityId: guest.id,
-      changes: { fullName: guest.fullName, documentNumber: guest.documentNumber },
+      // Nunca gravar o CPF cru aqui: o audit log é retido indefinidamente e
+      // vira uma segunda base de dados pessoais fora do controle da LGPD.
+      changes: {
+        fullName: guest.fullName,
+        documentNumber: this.maskDocument(guest.documentNumber),
+      },
     });
 
     return guest;
@@ -203,23 +233,54 @@ export class GuestService {
     }
 
     const now = new Date();
-    await this.prisma.guest.update({
-      where: { id },
-      data: {
-        fullName: `[ANONIMIZADO ${id.slice(-6)}]`,
-        email: null,
-        phone: null,
-        whatsapp: null,
-        addressStreet: null,
-        addressNumber: null,
-        addressComplement: null,
-        addressNeighborhood: null,
-        addressZip: null,
-        internalNotes: null,
-        preferences: undefined,
-        anonymizedAt: now,
-        deletedAt: now,
-      },
+
+    // LGPD art. 18 (eliminação): a anonimização precisa remover TODO identificador
+    // pessoal, não só nome/contato. Antes, CPF, nascimento e as fotos de documento
+    // sobreviviam — o registro continuava plenamente identificável.
+    await this.prisma.$transaction(async (tx) => {
+      await tx.guest.update({
+        where: { id },
+        data: {
+          fullName: `[ANONIMIZADO ${id.slice(-6)}]`,
+          // Placeholder preserva o @@unique([propertyId, documentNumber])
+          // sem manter o CPF real indexado e pesquisável.
+          documentNumber: `ANON-${id.slice(-10)}`,
+          documentIssuer: null,
+          documentIssuedAt: null,
+          birthDate: null,
+          gender: null,
+          occupation: null,
+          email: null,
+          phone: null,
+          whatsapp: null,
+          addressStreet: null,
+          addressNumber: null,
+          addressComplement: null,
+          addressNeighborhood: null,
+          addressCity: null,
+          addressState: null,
+          addressZip: null,
+          travelOrigin: null,
+          travelDestination: null,
+          travelPurpose: null,
+          transportMeans: null,
+          tags: [],
+          internalNotes: null,
+          preferences: Prisma.DbNull,
+          anonymizedAt: now,
+          deletedAt: now,
+        },
+      });
+
+      // Fotos de RG/passaporte (URLs no R2) são o dado mais sensível — some.
+      await tx.guestDocument.deleteMany({ where: { guestId: id } });
+
+      // O audit log guardava cópia do CPF/contatos em texto puro; sem limpar,
+      // a "eliminação" seria contornável por esse armazenamento secundário.
+      await tx.auditLog.updateMany({
+        where: { entityType: 'Guest', entityId: id },
+        data: { changes: { redacted: 'anonimizado-lgpd' }, metadata: Prisma.DbNull },
+      });
     });
 
     await this.audit.log({

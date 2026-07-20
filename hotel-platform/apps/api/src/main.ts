@@ -12,8 +12,14 @@ import { AppModule } from './app.module.js';
 setDefaultResultOrder('ipv4first');
 
 async function bootstrap() {
+  const isProd = process.env.NODE_ENV === 'production';
+
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
-    logger: ['error', 'warn', 'log', 'verbose', 'debug'],
+    // Em produção não emitir verbose/debug: esses níveis despejam payloads e
+    // internos nos logs, criando um repositório paralelo de dados pessoais.
+    logger: isProd
+      ? ['error', 'warn', 'log']
+      : ['error', 'warn', 'log', 'verbose', 'debug'],
   });
 
   // Necessário em PaaS (Railway, Heroku) pra obter IP real através do load balancer
@@ -21,6 +27,12 @@ async function bootstrap() {
 
   // Segurança
   app.use(helmet());
+
+  // Teto explícito de payload. Antes dependíamos do default implícito do
+  // Express (~100kb); fixar em 64kb deixa o limite intencional e corta
+  // tentativas de exaustão de memória por corpo gigante/JSON profundo.
+  app.useBodyParser('json', { limit: '64kb' });
+  app.useBodyParser('urlencoded', { limit: '64kb', extended: true });
 
   // Compressão (reduz custos de banda no Railway)
   app.use(compression());
