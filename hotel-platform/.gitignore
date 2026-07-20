@@ -47,3 +47,6 @@ lerna-debug.log*
 
 # Prisma
 packages/database/prisma/migrations/dev.db*
+
+# Worktrees temporarias do Claude Code (repo git embutido)
+.claude/worktrees/
