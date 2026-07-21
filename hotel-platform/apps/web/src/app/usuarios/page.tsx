@@ -22,10 +22,10 @@ const ROLE_LABELS: Record<string, string> = {
   RECEPTION: 'Recepção',
   HOUSEKEEPING_SUPERVISOR: 'Governanta',
   HOUSEKEEPER: 'Camareira',
-  READONLY: 'Somente leitura',
+  READONLY: 'Diretoria (só relatórios)',
 };
 
-const ALL_ROLES = ['ADMIN', 'MANAGER', 'RECEPTION', 'HOUSEKEEPING_SUPERVISOR', 'HOUSEKEEPER'];
+const ALL_ROLES = ['ADMIN', 'MANAGER', 'RECEPTION', 'HOUSEKEEPING_SUPERVISOR', 'HOUSEKEEPER', 'READONLY'];
 
 /** Cargos que o usuário logado pode atribuir (anti-escalonamento). */
 function assignableRoles(actorRole: string | undefined): string[] {

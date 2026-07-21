@@ -10,7 +10,9 @@ export type Role =
   | 'MANAGER'
   | 'RECEPTION'
   | 'HOUSEKEEPING_SUPERVISOR'
-  | 'HOUSEKEEPER';
+  | 'HOUSEKEEPER'
+  // "Diretoria": só consulta relatórios/indicadores, não altera nada.
+  | 'READONLY';
 
 /** Prefixo de rota → cargos que podem acessar. */
 export const ROUTE_ACCESS: { prefix: string; roles: Role[] }[] = [
@@ -23,7 +25,7 @@ export const ROUTE_ACCESS: { prefix: string; roles: Role[] }[] = [
   { prefix: '/housekeeping', roles: ['ADMIN', 'MANAGER', 'HOUSEKEEPING_SUPERVISOR'] },
   { prefix: '/minha-limpeza', roles: ['HOUSEKEEPER'] },
   { prefix: '/almoxarifado', roles: ['ADMIN', 'MANAGER', 'HOUSEKEEPING_SUPERVISOR'] },
-  { prefix: '/relatorios', roles: ['ADMIN', 'MANAGER'] },
+  { prefix: '/relatorios', roles: ['ADMIN', 'MANAGER', 'READONLY'] },
   { prefix: '/precos', roles: ['ADMIN', 'MANAGER'] },
   { prefix: '/convenios', roles: ['ADMIN', 'MANAGER'] },
   { prefix: '/usuarios', roles: ['ADMIN', 'MANAGER'] },
@@ -46,6 +48,8 @@ export function homeFor(role: string | undefined): string {
       return '/minha-limpeza';
     case 'HOUSEKEEPING_SUPERVISOR':
       return '/housekeeping';
+    case 'READONLY': // Diretoria entra direto nos relatórios.
+      return '/relatorios';
     default:
       return '/dashboard';
   }
