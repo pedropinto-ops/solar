@@ -50,8 +50,11 @@ async function bootstrap() {
   });
 
   // Prefixo de API
+  // Excluir /health E /health/live do prefixo: sem o segundo, o liveness cairia
+  // em /api/v1/health/live e o healthcheck do Railway (configurado p/ /health/live)
+  // não o acharia.
   app.setGlobalPrefix('api/v1', {
-    exclude: ['/health', '/'],
+    exclude: ['/health', '/health/live', '/'],
   });
 
   // Validação global
