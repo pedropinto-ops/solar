@@ -21,9 +21,13 @@ import { createPublicReservationSchema } from '@hotel/shared/schemas';
  * conversas em andamento — aceitável nesta fase.
  */
 // Modelo configurável via ASSISTANT_MODEL (Railway) — permite testar o Haiku
-// (custo ~3x menor) e voltar pro Sonnet sem deploy. Default: Sonnet, ótimo em
-// tool use por uma fração do custo do Opus.
-const DEFAULT_MODEL = 'claude-sonnet-4-6';
+// (mais barato) e voltar pro Sonnet sem deploy. Default: Sonnet 5, ótimo em
+// tool use e, no preço promocional até 31/08/2026, mais barato que o 4.6.
+// IMPORTANTE: a chamada usa thinking:'disabled' de propósito — no Sonnet 5 o
+// "thinking" liga sozinho quando omitido e consumiria o max_tokens (respostas
+// truncadas). As regras de negócio já são garantidas pela validação Zod no
+// servidor, não pela cadeia de raciocínio do modelo.
+const DEFAULT_MODEL = 'claude-sonnet-5';
 const MAX_TOOL_ITERATIONS = 8;
 const CONTRACT_VERSION = 'assistente-ia-2026-07';
 const CONVERSATION_TTL_MS = 30 * 60 * 1000; // 30 min
@@ -127,7 +131,11 @@ export class AssistantService {
 
       const response = await client.messages.create({
         model: this.model,
-        max_tokens: 1024,
+        max_tokens: 2048,
+        // Chat rápido e barato: sem "thinking". No Sonnet 5 (e no Opus) o
+        // thinking liga por padrão quando omitido; ligado com max_tokens baixo,
+        // ele trunca a resposta. Desligamos de propósito.
+        thinking: { type: 'disabled' },
         system: [
           { type: 'text', text: system, cache_control: { type: 'ephemeral' } },
         ],
