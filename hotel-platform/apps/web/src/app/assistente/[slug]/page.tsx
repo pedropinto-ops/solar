@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useParams } from 'next/navigation';
 import { apiFetch, ApiError } from '@/lib/api-client';
 import { Logo } from '@/components/ui/logo';
 
@@ -15,12 +16,8 @@ interface Msg {
   text: string;
 }
 
-export default function AssistentePage({
-  params,
-}: {
-  params: { slug: string };
-}) {
-  const { slug } = params;
+export default function AssistentePage() {
+  const { slug } = useParams<{ slug: string }>();
   const [messages, setMessages] = useState<Msg[]>([
     {
       role: 'assistant',

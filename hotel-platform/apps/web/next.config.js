@@ -2,9 +2,8 @@
 const nextConfig = {
   reactStrictMode: true,
   transpilePackages: ['@hotel/shared'],
-  experimental: {
-    typedRoutes: false,
-  },
+  // Next 15: typedRoutes saiu de experimental para o nível raiz.
+  typedRoutes: false,
   /**
    * Cabeçalhos de segurança do site. O helmet só protege a API; o portal que
    * o hóspede e a equipe abrem no navegador não tinha proteção nenhuma.

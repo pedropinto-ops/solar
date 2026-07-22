@@ -2,6 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 import { useState, useMemo } from 'react';
+import { useParams } from 'next/navigation';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { apiFetch, ApiError } from '@/lib/api-client';
 import { fmtCurrency, toDateInput, addDays } from '@/lib/format';
@@ -78,12 +79,8 @@ function fmtDate(iso: string): string {
   return d && m && y ? `${d}/${m}/${y}` : iso;
 }
 
-export default function PublicReservePage({
-  params,
-}: {
-  params: { slug: string };
-}) {
-  const { slug } = params;
+export default function PublicReservePage() {
+  const { slug } = useParams<{ slug: string }>();
   const [step, setStep] = useState<Step>('search');
 
   const tomorrow = useMemo(() => toDateInput(addDays(new Date(), 1)), []);

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useParams } from 'next/navigation';
 import { AppShell, Icon } from '@/components/app-shell';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardHeader, Button } from '@/components/ui/primitives';
@@ -21,8 +22,10 @@ import { fmtDate, fmtCurrency, fmtDateTime } from '@/lib/format';
 import { ApiError } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
 
-export default function ReservationPage({ params }: { params: { id: string } }) {
-  const { id } = params;
+export default function ReservationPage() {
+  // Next 15: params virou assíncrono. Em componente client, o hook useParams()
+  // é a forma idiomática (não precisa desembrulhar Promise).
+  const { id } = useParams<{ id: string }>();
   const { data: res, isLoading } = useReservation(id);
   const [error, setError] = useState<string | null>(null);
   const [showCharge, setShowCharge] = useState(false);
