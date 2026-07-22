@@ -36,18 +36,6 @@ export class HealthController {
   }
 
   /**
-   * ⚠️ TEMPORÁRIO — verificação manual do Sentry. Dispara um erro proposital
-   * para confirmar que o rastreamento de erros está capturando. SERÁ REMOVIDO
-   * logo após o teste (não deixar em produção — endpoint público que sempre 500).
-   */
-  @Get('sentry-test')
-  sentryTest(): never {
-    throw new Error(
-      'TESTE SENTRY — verificação manual do rastreamento de erros (pode ignorar).',
-    );
-  }
-
-  /**
    * READINESS — "dá para atender requisições?" (banco + Redis).
    * Use em dashboards/diagnóstico, não como healthcheck de plataforma.
    */
