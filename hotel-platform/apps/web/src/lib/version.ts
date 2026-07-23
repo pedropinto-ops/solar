@@ -7,4 +7,4 @@
  *
  * Fonte única exibida no rodapé do portal.
  */
-export const APP_VERSION = '6.09';
+export const APP_VERSION = '6.10';

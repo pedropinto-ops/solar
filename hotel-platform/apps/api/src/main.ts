@@ -23,6 +23,10 @@ async function bootstrap() {
     logger: isProd
       ? ['error', 'warn', 'log']
       : ['error', 'warn', 'log', 'verbose', 'debug'],
+    // Guarda o corpo BRUTO da requisição (req.rawBody). Necessário para
+    // verificar a assinatura HMAC do webhook do WhatsApp (Meta) — o corpo
+    // reserializado não bate. Não altera o parsing normal das outras rotas.
+    rawBody: true,
   });
 
   // Necessário em PaaS (Railway, Heroku) pra obter IP real através do load balancer
