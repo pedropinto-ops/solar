@@ -167,9 +167,11 @@ export class WhatsappService {
           }),
         });
         if (!res.ok) {
-          // Não logamos o corpo (pode conter dados) — só status para diagnóstico.
+          // DIAGNÓSTICO TEMPORÁRIO: loga o corpo do erro da Graph API para
+          // descobrir a causa do 400 (nº fora da lista, janela 24h, token…).
+          const errBody = await res.text().catch(() => '');
           this.logger.warn(
-            `Envio WhatsApp falhou (${res.status}) para ${this.maskPhone(to)}.`,
+            `Envio WhatsApp falhou (${res.status}) para ${this.maskPhone(to)}: ${errBody.slice(0, 600)}`,
           );
         }
       } catch (err) {
