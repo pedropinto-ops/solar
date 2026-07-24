@@ -52,6 +52,17 @@ export class WhatsappController {
   }
 
   /**
+   * DIAGNÓSTICO TEMPORÁRIO: dispara um envio de teste e devolve o status/corpo
+   * exato da Graph API (para achar a causa do 400). Protegido pelo verify token.
+   *   GET /public/whatsapp/_debug?t=<verify_token>&to=<numero>
+   * REMOVER depois do teste.
+   */
+  @Get('_debug')
+  async debug(@Query() query: Record<string, string>): Promise<Record<string, unknown>> {
+    return this.whatsapp.debugSend(query['t'], query['to']);
+  }
+
+  /**
    * Recebe as mensagens. Confere a assinatura contra o corpo BRUTO, responde
    * 200 na hora (senão a Meta re-tenta) e processa em segundo plano.
    */

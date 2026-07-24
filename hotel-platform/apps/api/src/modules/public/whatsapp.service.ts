@@ -180,6 +180,43 @@ export class WhatsappService {
     }
   }
 
+  /**
+   * DIAGNÓSTICO TEMPORÁRIO: tenta enviar um texto e devolve status + corpo da
+   * resposta da Graph API, para descobrir a causa do 400 sem depender dos logs.
+   * Protegido pelo verify token. REMOVER depois do teste.
+   */
+  async debugSend(
+    t: string | undefined,
+    to: string | undefined,
+  ): Promise<Record<string, unknown>> {
+    if (!t || !this.verifyToken || t !== this.verifyToken) {
+      return { ok: false, msg: 'unauthorized' };
+    }
+    if (!this.enabled) return { ok: false, enabled: false };
+    const dest = (to || '').replace(/\D/g, '');
+    if (!dest) return { ok: false, msg: 'informe ?to=<numero>' };
+    try {
+      const res = await fetch(`${this.apiUrl}/${this.phoneId}/messages`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to: dest,
+          type: 'text',
+          text: { preview_url: false, body: 'Teste do assistente do Solar Irará 🌅' },
+        }),
+      });
+      const body = await res.text().catch(() => '');
+      return { ok: res.ok, status: res.status, to: dest, body: body.slice(0, 1200) };
+    } catch (err) {
+      return { ok: false, error: String(err) };
+    }
+  }
+
   private extractTextMessages(payload: unknown): IncomingText[] {
     const out: IncomingText[] = [];
     const p = payload as {
